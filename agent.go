@@ -49,25 +49,11 @@ func Conn(addr string) {
 	msgMap["start"] = Start
 	msgMap["stop"] = Stop
 	msgMap["connected"] = CheckReq
+	msgMap["update"] = Update
 
 	go Ping()
 
 	buffer := make([]byte, 1024)
-	//for {
-	//	reader := bufio.NewReader(conn)
-	//	length, err := reader.Read(buffer)
-	//	if err != nil {
-	//		fmt.Println("msg error:", err.Error())
-	//		return
-	//	}
-	//	a := AgentMsg{}
-	//	jerr := json.Unmarshal(buffer[:length], &a)
-	//	if jerr != nil {
-	//		fmt.Println("this msg decode json fail", length, string(buffer), jerr.Error())
-	//	}
-	//	fmt.Println("recv msg from agentServer,s:", length, a)
-	//	msgMap[a.Cmd](a.Data)
-	//}
 	for {
 		reader := bufio.NewReader(conn)
 		len, err := reader.Read(buffer)
@@ -82,11 +68,13 @@ func Conn(addr string) {
 		a := AgentMsg{}
 		json.Unmarshal(buffer[4:dataLength+4], &a)
 		log.Println("recv agentserver msg, msg: ", a, dataLength, len)
+		msgMap[a.Cmd](a.Data)
 	}
 
 }
 
 func CheckReq(string) {
+	log.Println("ccccc")
 	a := AgentMsg{}
 	a.Cmd = "token"
 	md5Ctx := md5.New()
@@ -146,6 +134,10 @@ func Stop(data string) {
 	fmt.Println("recv stop msg, data:", data)
 }
 
+func Update(data string) {
+	fmt.Println("recv Update msg, data:", data)
+}
+
 func Ping() {
 	a := AgentMsg{
 		Cmd: "ping",
@@ -164,7 +156,7 @@ func Ping() {
 			return
 		}
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(10 * time.Second)
 	}
 }
 
