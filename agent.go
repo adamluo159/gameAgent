@@ -27,13 +27,26 @@ type AgentMsg struct {
 var msgMap map[string]func(data string)
 var gConn *net.Conn
 
+var configDir string
+var connectIP string
+var hostName string
+var hostConfigDir string
+
 func main() {
 	ip, err := ioutil.ReadFile("./ConnectAddress")
 	if err != nil {
 		log.Fatal("agent must read ConnectAddress File and get connect IP")
 	}
-	str := strings.Replace(string(ip), "\n", "", -1)
-	connStr := str + ":3300"
+	hostName, err = os.Hostname()
+	if err != nil {
+		fmt.Println("cannt get machine hostname", err.Error())
+	}
+	connectIP = strings.Replace(string(ip), "\n", "", -1)
+	connStr := connectIP + ":3300"
+	configDir = os.Getenv("HOME") + "/GameConfig"
+	hostConfigDir = configDir + "/" + hostName
+
+	os.Mkdir(configDir, os.ModePerm)
 	for {
 		Conn(connStr)
 		time.Sleep(5 * time.Second)
@@ -109,6 +122,7 @@ func CheckReq(string) {
 func CheckRsp(data string) {
 	fmt.Println("recv conn agent rsp, data:", data)
 	if data == "OK" {
+		Update("CheckRsp")
 	}
 }
 
@@ -122,6 +136,11 @@ func Stop(data string) {
 
 func Update(data string) {
 	fmt.Println("recv Update msg, data:", data)
+	args := connectIP + " " + hostConfigDir + " " + hostConfigDir
+	exeErr := ExeShell("./updateConfig", args)
+	if exeErr != nil {
+		log.Println("Update cannt work!, reason:", exeErr.Error())
+	}
 }
 
 func Ping() {
