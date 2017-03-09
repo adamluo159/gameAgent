@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -27,8 +28,14 @@ var msgMap map[string]func(data string)
 var gConn *net.Conn
 
 func main() {
+	ip, err := ioutil.ReadFile("./ConnectAddress")
+	if err != nil {
+		log.Fatal("agent must read ConnectAddress File and get connect IP")
+	}
+	str := strings.Replace(string(ip), "\n", "", -1)
+	connStr := str + ":3300"
 	for {
-		Conn("192.168.1.52:3300")
+		Conn(connStr)
 		time.Sleep(5 * time.Second)
 	}
 
@@ -101,28 +108,7 @@ func CheckReq(string) {
 
 func CheckRsp(data string) {
 	fmt.Println("recv conn agent rsp, data:", data)
-	if data != "OK" {
-		// 执行系统命令
-		// 第一个参数是命令名称
-		// 后面参数可以有多个，命令参数
-		cmd := exec.Command("sh", "GameConfig/gitUpdate")
-		// 获取输出对象，可以从该对象中读取输出结果
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-		// 保证关闭输出流
-		defer stdout.Close()
-		// 运行命令
-		if err := cmd.Start(); err != nil {
-			fmt.Println(err.Error())
-		}
-		// 读取输出结果
-		opBytes, err := ioutil.ReadAll(stdout)
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-		fmt.Println(string(opBytes))
+	if data == "OK" {
 	}
 }
 
@@ -173,4 +159,33 @@ func Send(data []byte) error {
 	_, err := (*gConn).Write(buff.Bytes())
 	log.Println("send msg:", len(buff.Bytes()), lenData, string(buff.Bytes()))
 	return err
+}
+
+func ExeShell(dir string, args string) error {
+	log.Println("begin execute shell.....", dir, "--", args)
+	// 执行系统命令
+	// 第一个参数是命令名称
+	// 后面参数可以有多个，命令参数
+	cmd := exec.Command("sh", dir, args) //"GameConfig/gitCommit", "zoneo")
+	// 获取输出对象，可以从该对象中读取输出结果
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	// 保证关闭输出流
+	defer stdout.Close()
+	// 运行命令
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+		return err
+	}
+	// 读取输出结果
+	opBytes, err := ioutil.ReadAll(stdout)
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	fmt.Println(string(opBytes))
+	return nil
 }
