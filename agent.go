@@ -136,8 +136,7 @@ func Stop(data string) {
 
 func Update(data string) {
 	fmt.Println("recv Update msg, data:", data)
-	args := connectIP + " " + hostConfigDir + " " + hostConfigDir
-	exeErr := ExeShell("expect", "./updateConfig", args)
+	exeErr := ExeShellUseArg3("expect", "./updateConfig", connectIP, hostConfigDir, hostConfigDir)
 	if exeErr != nil {
 		log.Println("Update cannt work!, reason:", exeErr.Error())
 	}
@@ -186,6 +185,35 @@ func ExeShell(syscmd string, dir string, args string) error {
 	// 第一个参数是命令名称
 	// 后面参数可以有多个，命令参数
 	cmd := exec.Command(syscmd, dir, args) //"GameConfig/gitCommit", "zoneo")
+	// 获取输出对象，可以从该对象中读取输出结果
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	// 保证关闭输出流
+	defer stdout.Close()
+	// 运行命令
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+		return err
+	}
+	// 读取输出结果
+	opBytes, err := ioutil.ReadAll(stdout)
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	fmt.Println(string(opBytes))
+	return nil
+}
+
+func ExeShellUseArg3(syscmd string, dir string, arg1 string, arg2 string, arg3 string) error {
+	log.Println("begin execute shell.....", syscmd, dir, "--", arg1, arg2)
+	// 执行系统命令
+	// 第一个参数是命令名称
+	// 后面参数可以有多个，命令参数
+	cmd := exec.Command(syscmd, dir, arg1, arg2, arg3) //"GameConfig/gitCommit", "zoneo")
 	// 获取输出对象，可以从该对象中读取输出结果
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
