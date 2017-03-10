@@ -46,7 +46,7 @@ func main() {
 	connStr := connectIP + ":3300"
 	configDir = os.Getenv("HOME") + "/GameConfig"
 	hostConfigDir = configDir + "/" + hostName
-	cgServerFile := os.Getenv("HOME") + "/product/server/cgServer"
+	cgServerFile = os.Getenv("HOME") + "/product/server/cgServer"
 
 	os.Mkdir(configDir, os.ModePerm)
 	for {
