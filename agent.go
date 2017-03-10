@@ -136,7 +136,7 @@ func Stop(data string) {
 
 func Update(data string) {
 	fmt.Println("recv Update msg, data:", data)
-	exeErr := ExeShellUseArg3("expect", "./synGameConf_expt", connectIP, hostConfigDir, hostConfigDir)
+	exeErr := ExeShellUseArg3("expect", "./synGameConf_expt", connectIP, hostConfigDir, configDir+"/")
 	if exeErr != nil {
 		log.Println("Update cannt work!, reason:", exeErr.Error())
 	}
