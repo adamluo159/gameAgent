@@ -137,7 +137,7 @@ func Stop(data string) {
 func Update(data string) {
 	fmt.Println("recv Update msg, data:", data)
 	args := connectIP + " " + hostConfigDir + " " + hostConfigDir
-	exeErr := ExeShell("./updateConfig", args)
+	exeErr := ExeShell("expect", "./updateConfig", args)
 	if exeErr != nil {
 		log.Println("Update cannt work!, reason:", exeErr.Error())
 	}
@@ -180,12 +180,12 @@ func Send(data []byte) error {
 	return err
 }
 
-func ExeShell(dir string, args string) error {
-	log.Println("begin execute shell.....", dir, "--", args)
+func ExeShell(syscmd string, dir string, args string) error {
+	log.Println("begin execute shell.....", syscmd, dir, "--", args)
 	// 执行系统命令
 	// 第一个参数是命令名称
 	// 后面参数可以有多个，命令参数
-	cmd := exec.Command("sh", dir, args) //"GameConfig/gitCommit", "zoneo")
+	cmd := exec.Command(syscmd, dir, args) //"GameConfig/gitCommit", "zoneo")
 	// 获取输出对象，可以从该对象中读取输出结果
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
