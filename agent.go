@@ -31,6 +31,7 @@ var configDir string
 var connectIP string
 var hostName string
 var hostConfigDir string
+var cgServerFile string
 
 func main() {
 	ip, err := ioutil.ReadFile("./ConnectAddress")
@@ -45,6 +46,7 @@ func main() {
 	connStr := connectIP + ":3300"
 	configDir = os.Getenv("HOME") + "/GameConfig"
 	hostConfigDir = configDir + "/" + hostName
+	cgServerFile := os.Getenv("HOME") + "/product/server/cgServer"
 
 	os.Mkdir(configDir, os.ModePerm)
 	for {
@@ -128,10 +130,12 @@ func CheckRsp(data string) {
 
 func Start(data string) {
 	fmt.Println("recv start msg, data:", data)
+	ExeShellUseArg3("sh", cgServerFile, "start", data, "")
 }
 
 func Stop(data string) {
 	fmt.Println("recv stop msg, data:", data)
+	ExeShellUseArg3("sh", cgServerFile, "stop", data, "")
 }
 
 func Update(data string) {
