@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
@@ -40,7 +39,7 @@ func main() {
 	}
 	hostName, err = os.Hostname()
 	if err != nil {
-		fmt.Println("cannt get machine hostname", err.Error())
+		log.Println("cannt get machine hostname", err.Error())
 	}
 	connectIP = strings.Replace(string(ip), "\n", "", -1)
 	connStr := connectIP + ":3300"
@@ -59,7 +58,7 @@ func main() {
 func Conn(addr string) {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		fmt.Println("agent conn fail, addr:", addr)
+		log.Println("agent conn fail, addr:", addr)
 		return
 	}
 	defer conn.Close()
@@ -105,41 +104,41 @@ func CheckReq(string) {
 	a.Data = hex.EncodeToString(cipherStr)
 	host, hostErr := os.Hostname()
 	if hostErr != nil {
-		fmt.Println(":checkReq:", hostErr.Error())
+		log.Println(":checkReq:", hostErr.Error())
 	}
 
 	a.Host = host
 	data, err := json.Marshal(a)
 	if err != nil {
-		fmt.Println("checkReq: ", err.Error())
+		log.Println("checkReq: ", err.Error())
 		return
 	}
 	jerr := Send(data)
 	if jerr != nil {
-		fmt.Println("checkReq:", jerr.Error())
+		log.Println("checkReq:", jerr.Error())
 		return
 	}
 }
 
 func CheckRsp(data string) {
-	fmt.Println("recv conn agent rsp, data:", data)
+	log.Println("recv conn agent rsp, data:", data)
 	if data == "OK" {
 		Update("CheckRsp")
 	}
 }
 
 func Start(data string) {
-	fmt.Println("recv start msg, data:", data)
+	log.Println("recv start msg, data:", data)
 	ExeShellUseArg3("sh", cgServerFile, "start", data, "")
 }
 
 func Stop(data string) {
-	fmt.Println("recv stop msg, data:", data)
+	log.Println("recv stop msg, data:", data)
 	ExeShellUseArg3("sh", cgServerFile, "stop", data, "")
 }
 
 func Update(data string) {
-	fmt.Println("recv Update msg, data:", data)
+	log.Println("recv Update msg, data:", data)
 	exeErr := ExeShellUseArg3("expect", "./synGameConf_expt", connectIP, hostConfigDir, configDir+"/")
 	if exeErr != nil {
 		log.Println("Update cannt work!, reason:", exeErr.Error())
@@ -152,7 +151,7 @@ func Ping() {
 	}
 	data, err := json.Marshal(a)
 	if err != nil {
-		fmt.Println("checkReq: ", err.Error())
+		log.Println("checkReq: ", err.Error())
 		return
 	}
 	var jerr error
@@ -160,7 +159,7 @@ func Ping() {
 		log.Println("send ping ...")
 		jerr = Send(data)
 		if jerr != nil {
-			fmt.Println("pingErr:", jerr.Error())
+			log.Println("pingErr:", jerr.Error())
 			return
 		}
 
@@ -208,7 +207,11 @@ func ExeShell(syscmd string, dir string, args string) error {
 		log.Fatal(err)
 		return err
 	}
-	fmt.Println(string(opBytes))
+	e := cmd.Wait()
+	if e != nil {
+		log.Println("Exeshell error:", e.Error())
+	}
+	log.Println(string(opBytes))
 	return nil
 }
 
@@ -237,6 +240,10 @@ func ExeShellUseArg3(syscmd string, dir string, arg1 string, arg2 string, arg3 s
 		log.Fatal(err)
 		return err
 	}
-	fmt.Println(string(opBytes))
+	e := cmd.Wait()
+	if e != nil {
+		log.Println("Exeshell error:", e.Error())
+	}
+	log.Println(string(opBytes))
 	return nil
 }
