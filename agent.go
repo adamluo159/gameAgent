@@ -209,6 +209,10 @@ func ExeShell(syscmd string, dir string, args string) error {
 		log.Fatal(err)
 		return err
 	}
+	e := cmd.Wait()
+	if e != nil {
+		log.Println("Exeshell error:", e.Error())
+	}
 	log.Println(string(opBytes))
 	return nil
 }
@@ -237,6 +241,10 @@ func ExeShellUseArg3(syscmd string, dir string, arg1 string, arg2 string, arg3 s
 	if err != nil {
 		log.Fatal(err)
 		return err
+	}
+	e := cmd.Wait()
+	if e != nil {
+		log.Println("Exeshell error:", e.Error())
 	}
 	log.Println(string(opBytes))
 	return nil
