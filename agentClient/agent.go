@@ -1,4 +1,4 @@
-package main
+package agentClient
 
 import (
 	"bufio"
@@ -32,7 +32,7 @@ var hostName string
 var hostConfigDir string
 var cgServerFile string
 
-func main() {
+func New() {
 	ip, err := ioutil.ReadFile("./ConnectAddress")
 	if err != nil {
 		log.Fatal("agent must read ConnectAddress File and get connect IP")
@@ -52,7 +52,6 @@ func main() {
 		Conn(connStr)
 		time.Sleep(5 * time.Second)
 	}
-
 }
 
 func Conn(addr string) {
