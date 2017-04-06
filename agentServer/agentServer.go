@@ -3,14 +3,12 @@ package agentServer
 import (
 	"log"
 	"net"
-	"time"
 )
 
 // Client holds info about connection
 type Client struct {
-	conn     net.Conn
-	host     string
-	pingTime time.Time
+	conn *net.Conn
+	host string
 }
 
 // TCP server
@@ -22,9 +20,6 @@ type server struct {
 }
 
 var gserver *server
-var msgMap map[string]func(c *Client, a *AgentMsg)
-
-const timeOutSec int64 = 20
 
 // Start network server
 func (s *server) Listen() {
@@ -38,7 +33,7 @@ func (s *server) Listen() {
 	for {
 		conn, _ := listener.Accept()
 		client := &Client{
-			conn: conn,
+			conn: &conn,
 		}
 		go client.OnMessage()
 	}
@@ -51,9 +46,50 @@ func New(address string) {
 		address: address,
 		clients: make(map[string]*Client),
 	}
-	msgMap = make(map[string]func(c *Client, a *AgentMsg))
-	msgMap["token"] = TokenCheck
-	msgMap["ping"] = Ping
+	//msgMap = make(map[string]func(c *Client, a *AgentMsg))
+	//msgMap["token"] = TokenCheck
+	//msgMap["ping"] = Ping
 
 	gserver.Listen()
+}
+
+func StartZone(host string, zid int) bool {
+	//log.Println(" recv web cmd startzone", host, " zid:", zid)
+	//c := gserver.clients[host]
+	//if c == nil {
+	//	return false
+	//}
+	//zone := "zone" + strconv.Itoa(zid)
+	//err := c.SendBytes("start", zone)
+	//if err != nil {
+	//	log.Println(host + "  startzone: " + err.Error())
+	//}
+	return true
+}
+
+func StopZone(host string, zid int) bool {
+	//log.Println(" recv web cmd stopzone", host, " zid:", zid)
+	//c := gserver.clients[host]
+	//if c == nil {
+	//	return false
+	//}
+	//zone := "zone" + strconv.Itoa(zid)
+	//err := c.SendBytes("stop", zone)
+	//if err != nil {
+	//	log.Println(host + "  stopzone: " + err.Error())
+	//}
+	return true
+}
+
+func Update(host string) {
+	//log.Println(" recv web cmd update", host)
+	//c := gserver.clients[host]
+	//if c == nil {
+	//	log.Println("cannt find client hostname:", host, gserver.clients)
+	//	return
+	//}
+	//err := c.SendBytesCmd("update")
+	//if err != nil {
+	//	log.Println(host + "  update: " + err.Error())
+	//}
 }

@@ -1,15 +1,12 @@
 package agentServer
 
 import (
-	"bufio"
 	"bytes"
-	"crypto/md5"
-	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"log"
-	"strconv"
-	"time"
+
+	"github.com/adamluo159/gameAgent/protocol"
+	"github.com/adamluo159/gameAgent/utils"
 )
 
 type AgentMsg struct {
@@ -18,134 +15,96 @@ type AgentMsg struct {
 	Data string
 }
 
-// Read client data from channel
+func (c *Client) RegCmd() *map[uint32]func(data []byte) {
+	return &map[uint32]func(data []byte){
+		protocol.CmdToken: c.TokenCheck,
+	}
+}
+
 func (c *Client) OnMessage() {
-	buffer := make([]byte, 1024)
+	// 消息缓冲
+	msgbuf := bytes.NewBuffer(make([]byte, 0, 1024))
+	// 数据缓冲
+	databuf := make([]byte, 1024)
+	// 消息长度
+	length := 0
+
+	//注册消息处理
+	msgMap := c.RegCmd()
+
 	for {
-		reader := bufio.NewReader(c.conn)
-		len, err := reader.Read(buffer)
+		// 读取数据
+		n, err := (*c.conn).Read(databuf)
 		if err != nil {
-			log.Println("msg error:", err.Error())
+			log.Printf("Read error: %s\n", err)
 			return
 		}
-		dataLength := binary.LittleEndian.Uint32(buffer)
-		if dataLength <= 0 || dataLength > 1020 {
-			continue
+		// 数据添加到消息缓冲
+		n, err = msgbuf.Write(databuf[:n])
+		if err != nil {
+			log.Printf("Buffer write error: %s\n", err)
+			return
 		}
-		a := AgentMsg{}
-		json.Unmarshal(buffer[4:dataLength+4], &a)
-		msgfunc := msgMap[a.Cmd]
-		if msgfunc == nil {
-			log.Println("cannt recv agent msg, msg: ", a, dataLength, len)
-		} else {
-			msgfunc(c, &a)
-			log.Println("recv agent msg, msg: ", a, dataLength, len)
+		// 消息分割循环
+		for {
+			//// 消息头
+			//if length == 0 && msgbuf.Len() >= 4 {
+			//	binary.Read(msgbuf, binary.LittleEndian, &ulength)
+			//	length = int(ulength)
+			//	// 检查超长消息
+			//	if length > 1024 {
+			//		log.Printf("Message too length: %d\n", length)
+			//		return
+			//	}
+			//}
+			//// 消息体
+			//if length > 0 && msgbuf.Len() >= length {
+			//	binary.Read(msgbuf, binary.BigEndian, &cmd)
+			//	data := msgbuf.Next(length - 4)
+			//	length = 0
+			//	mfunc := (*msgMap)[cmd]
+			//	if mfunc == nil {
+			//		log.Printf("cannt find msg handle Client cmd: %d data: %s\n", cmd, string(data))
+			//	} else {
+			//		mfunc(data)
+			//		log.Printf("Client cmd: %d data: %s\n", cmd, string(data))
+			//	}
+			//} else {
+			//	break
+			//}
+			cmd, data := protocol.UnPacket(&length, msgbuf)
+			if cmd <= 0 {
+				break
+			}
+			mfunc := (*msgMap)[cmd]
+			if mfunc == nil {
+				log.Printf("cannt find msg handle Client cmd: %d data: %s\n", cmd, string(data))
+			} else {
+				mfunc(data)
+				log.Printf("Client cmd: %d data: %s\n", cmd, string(data))
+			}
+
 		}
 	}
 }
 
-// Send bytes to client
-func (c *Client) SendBytes(cmd string, jdata string) error {
-	a := AgentMsg{
-		Cmd:  cmd,
-		Data: jdata,
-	}
-	data, err := json.Marshal(a)
+func (c *Client) TokenCheck(data []byte) {
+	p := protocol.C2sToken{}
+	err := json.Unmarshal(data, &p)
 	if err != nil {
-		return err
-	}
-	lenData := (uint32)(len(data))
-	s := make([]byte, 4)
-	binary.LittleEndian.PutUint32(s, lenData)
-	buff := bytes.NewBuffer(s)
-	buff.Write(data)
-
-	empty := make([]byte, 1024-buff.Len())
-	buff.Write(empty)
-
-	_, serr := c.conn.Write(buff.Bytes())
-	//log.Println("send msg:", len(buff.Bytes()), lenData, string(buff.Bytes()))
-	return serr
-}
-
-func (c *Client) SendBytesCmd(cmd string) error {
-	a := AgentMsg{
-		Cmd: cmd,
-	}
-	data, err := json.Marshal(a)
-	if err != nil {
-		return err
-	}
-	lenData := (uint32)(len(data))
-	s := make([]byte, 4)
-	binary.LittleEndian.PutUint32(s, lenData)
-	buff := bytes.NewBuffer(s)
-	buff.Write(data)
-
-	empty := make([]byte, 1024-buff.Len())
-	buff.Write(empty)
-
-	_, serr := c.conn.Write(buff.Bytes())
-	log.Println("send msg:", len(buff.Bytes()), lenData, string(buff.Bytes()))
-	return serr
-}
-
-func TokenCheck(c *Client, a *AgentMsg) {
-	md5Ctx := md5.New()
-	md5Ctx.Write([]byte("cgyx2017"))
-	cipherStr := md5Ctx.Sum(nil)
-	token := hex.EncodeToString(cipherStr)
-	if token != (*a).Data {
-		log.Println("token cannt be checked, ip and adress:", c.conn.RemoteAddr().String())
+		log.Println("TokenCheck, uncode error: ", string(data))
 		return
 	}
-
-	c.host = a.Host
-	gserver.clients[a.Host] = c
-	c.SendBytes("checked", "OK")
-}
-
-func Ping(c *Client, a *AgentMsg) {
-	c.pingTime = time.Now()
-}
-
-func StartZone(host string, zid int) bool {
-	log.Println(" recv web cmd startzone", host, " zid:", zid)
-	c := gserver.clients[host]
-	if c == nil {
-		return false
-	}
-	zone := "zone" + strconv.Itoa(zid)
-	err := c.SendBytes("start", zone)
-	if err != nil {
-		log.Println(host + "  startzone: " + err.Error())
-	}
-	return true
-}
-
-func StopZone(host string, zid int) bool {
-	log.Println(" recv web cmd stopzone", host, " zid:", zid)
-	c := gserver.clients[host]
-	if c == nil {
-		return false
-	}
-	zone := "zone" + strconv.Itoa(zid)
-	err := c.SendBytes("stop", zone)
-	if err != nil {
-		log.Println(host + "  stopzone: " + err.Error())
-	}
-	return true
-}
-
-func Update(host string) {
-	log.Println(" recv web cmd update", host)
-	c := gserver.clients[host]
-	if c == nil {
-		log.Println("cannt find client hostname:", host, gserver.clients)
+	if utils.Md5Check(p.Token, "cgyx2017") == false {
+		(*c.conn).Close()
 		return
 	}
-	err := c.SendBytesCmd("update")
-	if err != nil {
-		log.Println(host + "  update: " + err.Error())
+	c.host = p.Host
+	gserver.clients[p.Host] = c
+
+	r := protocol.S2cToken{
+		StaticIp: "192.168.1.1",
+		Zones:    make(map[int]string),
 	}
+	protocol.SendJson(c.conn, protocol.CmdToken, r)
 }
