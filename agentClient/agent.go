@@ -15,13 +15,6 @@ import (
 	"github.com/adamluo159/gameAgent/utils"
 )
 
-//const map[string]func(data string) msgMap
-type AgentMsg struct {
-	Cmd  string
-	Host string
-	Data string
-}
-
 var msgMap map[uint32]func([]byte)
 var gConn *net.Conn
 
@@ -73,7 +66,7 @@ func Conn(addr string) {
 	CheckReq()
 
 	//只在内网跑，所有不加ping了
-	go Ping()
+	//go Ping()
 
 	// 消息缓冲
 	msgbuf := bytes.NewBuffer(make([]byte, 0, 1024))
@@ -153,12 +146,9 @@ func Update(data []byte) {
 }
 
 func Ping() {
-	a := AgentMsg{
-		Cmd: "ping",
-	}
 	for {
 		log.Println("send ping ...")
-		protocol.SendJson(gConn, protocol.CmdUpdateHost, a)
+		protocol.Send(gConn, protocol.CmdUpdateHost, "ok")
 		time.Sleep(10 * time.Millisecond)
 	}
 }

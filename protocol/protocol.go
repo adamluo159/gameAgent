@@ -71,6 +71,11 @@ func UnPacket(length *int, msgbuf *bytes.Buffer) (uint32, []byte) {
 }
 
 func Send(conn *net.Conn, cmd uint32, s string) {
+	if conn == nil {
+		log.Printf("send msg cmd:%d, conn pointer is nil", cmd, conn)
+		return
+	}
+
 	b := Packet(cmd, []byte(s))
 	_, err := (*conn).Write(b)
 	if err != nil {
@@ -82,6 +87,10 @@ func Send(conn *net.Conn, cmd uint32, s string) {
 }
 
 func SendJson(conn *net.Conn, cmd uint32, v interface{}) {
+	if conn == nil {
+		log.Printf("PacketJson error, cmd:%d, conn pointer is nil", cmd, conn)
+		return
+	}
 	data, err := json.Marshal(v)
 	if err != nil {
 		log.Printf("PacketJson error, cmd:%d, err:%s ", cmd, err.Error())
@@ -91,7 +100,7 @@ func SendJson(conn *net.Conn, cmd uint32, v interface{}) {
 	b := Packet(cmd, jsonBytes)
 	_, jerr := (*conn).Write(b)
 	if jerr != nil {
-		log.Printf("send msg error, cmd:%d, v:%s, err:%s", cmd, v, err.Error())
+		log.Printf("send msg error, cmd:%d, v:%s, err:%s", cmd, v, jerr.Error())
 	} else {
 		log.Println("send msg:", cmd, len(b), string(b))
 	}
