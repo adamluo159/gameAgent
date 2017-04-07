@@ -9,12 +9,6 @@ import (
 	"github.com/adamluo159/gameAgent/utils"
 )
 
-type AgentMsg struct {
-	Cmd  string
-	Host string
-	Data string
-}
-
 func (c *Client) RegCmd() *map[uint32]func(data []byte) {
 	return &map[uint32]func(data []byte){
 		protocol.CmdToken: c.TokenCheck,
@@ -47,31 +41,6 @@ func (c *Client) OnMessage() {
 		}
 		// 消息分割循环
 		for {
-			//// 消息头
-			//if length == 0 && msgbuf.Len() >= 4 {
-			//	binary.Read(msgbuf, binary.LittleEndian, &ulength)
-			//	length = int(ulength)
-			//	// 检查超长消息
-			//	if length > 1024 {
-			//		log.Printf("Message too length: %d\n", length)
-			//		return
-			//	}
-			//}
-			//// 消息体
-			//if length > 0 && msgbuf.Len() >= length {
-			//	binary.Read(msgbuf, binary.BigEndian, &cmd)
-			//	data := msgbuf.Next(length - 4)
-			//	length = 0
-			//	mfunc := (*msgMap)[cmd]
-			//	if mfunc == nil {
-			//		log.Printf("cannt find msg handle Client cmd: %d data: %s\n", cmd, string(data))
-			//	} else {
-			//		mfunc(data)
-			//		log.Printf("Client cmd: %d data: %s\n", cmd, string(data))
-			//	}
-			//} else {
-			//	break
-			//}
 			cmd, data := protocol.UnPacket(&length, msgbuf)
 			if cmd <= 0 {
 				break
@@ -83,7 +52,6 @@ func (c *Client) OnMessage() {
 				mfunc(data)
 				log.Printf("Client cmd: %d data: %s\n", cmd, string(data))
 			}
-
 		}
 	}
 }
