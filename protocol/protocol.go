@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	CmdSize int = 4
+	HSize int = 4
 )
 
 const (
@@ -27,18 +27,18 @@ type C2sToken struct {
 }
 
 type S2cToken struct {
-	StaticIp string //统计后台ip
-	Zones    map[int]string
+	StaticIp     string //统计后台ip
+	Applications []string
 }
 
 func Packet(cmd uint32, data []byte) []byte {
 	dataLen := len(data)
-	HeadLen := CmdSize * 2
-	len := dataLen + HeadLen
+	HeadLen := HSize * 2
+	packetlen := dataLen + HeadLen
 
-	var buf = make([]byte, len)
-	binary.BigEndian.PutUint32(buf[:CmdSize], uint32(dataLen+CmdSize))
-	binary.BigEndian.PutUint32(buf[CmdSize:HeadLen], cmd)
+	var buf = make([]byte, packetlen)
+	binary.BigEndian.PutUint32(buf[:HSize], uint32(dataLen+HSize))
+	binary.BigEndian.PutUint32(buf[HSize:HeadLen], cmd)
 	copy(buf[HeadLen:], data)
 	return buf
 }
@@ -59,12 +59,14 @@ func UnPacket(length *int, msgbuf *bytes.Buffer) (uint32, []byte) {
 	}
 	// 消息体
 	if *length <= 0 || msgbuf.Len() < *length {
-		log.Printf("Message, len:%d, bufLen:%d", *length, msgbuf.Len())
+		//log.Printf("Message, len:%d, bufLen:%d", *length, msgbuf.Len())
 		return 0, nil
 	}
 
 	binary.Read(msgbuf, binary.BigEndian, &cmd)
-	data := msgbuf.Next(*length - CmdSize)
+	*length = *length - HSize
+
+	data := msgbuf.Next(*length)
 	*length = 0
 
 	return cmd, data
@@ -81,7 +83,7 @@ func Send(conn *net.Conn, cmd uint32, s string) {
 	if err != nil {
 		log.Printf("send msg error, cmd:%d, s:%s, err:%s", cmd, s, err.Error())
 	} else {
-		log.Println("send msg:", len(b), cmd)
+		log.Println("send msg:", len(b), cmd, s)
 	}
 
 }
@@ -97,11 +99,10 @@ func SendJson(conn *net.Conn, cmd uint32, v interface{}) {
 		return
 	}
 	jsonBytes := Packet(cmd, data)
-	b := Packet(cmd, jsonBytes)
-	_, jerr := (*conn).Write(b)
+	_, jerr := (*conn).Write(jsonBytes)
 	if jerr != nil {
 		log.Printf("send msg error, cmd:%d, v:%s, err:%s", cmd, v, jerr.Error())
 	} else {
-		log.Println("send msg:", cmd, len(b), string(b))
+		log.Println("send msg:", cmd, len(jsonBytes), string(jsonBytes))
 	}
 }

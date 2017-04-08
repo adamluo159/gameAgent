@@ -11,18 +11,29 @@ import (
 	"strings"
 	"time"
 
+	"encoding/json"
+
 	"github.com/adamluo159/gameAgent/protocol"
 	"github.com/adamluo159/gameAgent/utils"
 )
 
+type LogsInfo struct {
+	logdbIP  map[string]string
+	StaticIP string
+}
+
 var msgMap map[uint32]func([]byte)
 var gConn *net.Conn
 
-var configDir string
-var connectIP string
-var hostName string
-var hostConfigDir string
-var cgServerFile string
+var (
+	configDir     string
+	connectIP     string
+	hostName      string
+	hostConfigDir string
+	cgServerFile  string
+
+	logConfs LogsInfo
+)
 
 func RegCmd() {
 	msgMap = make(map[uint32]func([]byte))
@@ -121,10 +132,20 @@ func CheckReq() {
 }
 
 func CheckRsp(data []byte) {
-	log.Println("recv conn agent rsp, data:", string(data))
 	//if data == "OK" {
 	//	Update("CheckRsp")
 	//}
+	p := protocol.S2cToken{}
+	err := json.Unmarshal(data, &p)
+	if err != nil {
+		log.Println("CheckRsp, uncode error:", string(data), err.Error())
+		return
+	}
+	logConfs.StaticIP = p.StaticIp
+	exeErr := ExeShellUseArg3("expect", "./synGameConf_expt", connectIP, hostConfigDir, configDir+"/")
+	if exeErr != nil {
+		log.Println("Update cannt work!, reason:", exeErr.Error())
+	}
 }
 
 func Start(data []byte) {
@@ -137,12 +158,8 @@ func Stop(data []byte) {
 	//ExeShellUseArg3("sh", cgServerFile, "stop", data, "")
 }
 
-func Update(data []byte) {
-	log.Println("recv Update msg, data:", data)
-	exeErr := ExeShellUseArg3("expect", "./synGameConf_expt", connectIP, hostConfigDir, configDir+"/")
-	if exeErr != nil {
-		log.Println("Update cannt work!, reason:", exeErr.Error())
-	}
+func Update() {
+
 }
 
 func Ping() {

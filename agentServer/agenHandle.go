@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 
+	"github.com/adamluo159/admin-react/server/machine"
 	"github.com/adamluo159/gameAgent/protocol"
 	"github.com/adamluo159/gameAgent/utils"
 )
@@ -49,8 +50,8 @@ func (c *Client) OnMessage() {
 			if mfunc == nil {
 				log.Printf("cannt find msg handle Client cmd: %d data: %s\n", cmd, string(data))
 			} else {
-				mfunc(data)
 				log.Printf("Client cmd: %d data: %s\n", cmd, string(data))
+				mfunc(data)
 			}
 		}
 	}
@@ -70,9 +71,15 @@ func (c *Client) TokenCheck(data []byte) {
 	c.host = p.Host
 	gserver.clients[p.Host] = c
 
+	m := machine.GetMachineByName(p.Host)
+	if m == nil {
+		log.Println("TokenCheck cant find machine, host:", c.host)
+		return
+	}
+
 	r := protocol.S2cToken{
-		StaticIp: "192.168.1.1",
-		Zones:    make(map[int]string),
+		StaticIp:     "192.168.1.1",
+		Applications: m.Applications,
 	}
 	protocol.SendJson(c.conn, protocol.CmdToken, r)
 }
