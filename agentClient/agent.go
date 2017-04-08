@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -20,6 +21,11 @@ import (
 type LogsInfo struct {
 	logdbIP  map[string]string
 	StaticIP string
+}
+
+type LogdbConf struct {
+	DirName string
+	IP      string
 }
 
 var msgMap map[uint32]func([]byte)
@@ -36,29 +42,38 @@ var (
 )
 
 func RegCmd() {
-	msgMap = make(map[uint32]func([]byte))
-	msgMap[protocol.CmdToken] = CheckRsp
-}
+	logConfs.logdbIP = make(map[string]string)
 
-func New() {
-	ip, err := ioutil.ReadFile("./ConnectAddress")
-	if err != nil {
-		log.Fatal("agent must read ConnectAddress File and get connect IP")
+	hostName, _ = os.Hostname()
+	if hostName == "" {
+		log.Println("cannt get machine hostname")
 	}
-	hostName, err = os.Hostname()
-	if err != nil {
-		log.Println("cannt get machine hostname", err.Error())
-	}
-	connectIP = strings.Replace(string(ip), "\n", "", -1)
-	connStr := connectIP + ":3300"
 	configDir = os.Getenv("HOME") + "/GameConfig"
 	hostConfigDir = configDir + "/" + hostName
 	cgServerFile = os.Getenv("HOME") + "/product/server/cgServer"
 
 	os.Mkdir(configDir, os.ModePerm)
+	msgMap = make(map[uint32]func([]byte))
+	msgMap[protocol.CmdToken] = CheckRsp
+}
+
+func ExecPhpForLogdb() {
+	//for k := range logConfs.logdbIP {
+
+	//}
+}
+
+func New() {
 	RegCmd()
 
-	//cron.SetTimerPerHour(logFile2Db)
+	ip, err := ioutil.ReadFile("./ConnectAddress")
+	if err != nil {
+		log.Fatal("agent must read ConnectAddress File and get connect IP")
+	}
+	connectIP = strings.Replace(string(ip), "\n", "", -1)
+	connStr := connectIP + ":3300"
+
+	utils.SetTimerPerHour(ExecPhpForLogdb)
 	for {
 		Conn(connStr)
 		time.Sleep(5 * time.Second)
@@ -132,9 +147,6 @@ func CheckReq() {
 }
 
 func CheckRsp(data []byte) {
-	//if data == "OK" {
-	//	Update("CheckRsp")
-	//}
 	p := protocol.S2cToken{}
 	err := json.Unmarshal(data, &p)
 	if err != nil {
@@ -146,6 +158,27 @@ func CheckRsp(data []byte) {
 	if exeErr != nil {
 		log.Println("Update cannt work!, reason:", exeErr.Error())
 	}
+	LoadLogFile()
+}
+
+func LoadLogFile() {
+	dir, err := ioutil.ReadDir(hostConfigDir)
+	if err != nil {
+		log.Println("LoadLogFile, read dir err, ", err.Error())
+	}
+	for index := 0; index < len(dir); index++ {
+		file := hostConfigDir + "/" + dir[index].Name() + "/logdbconf"
+		l, err := ioutil.ReadFile(file)
+		if err != nil {
+			log.Println("LoadLogFile, read file err, ", file, err.Error())
+		}
+		db := LogdbConf{}
+		jerr := json.Unmarshal(l, &db)
+		if jerr != nil {
+			log.Println("LoadLogFile uncode json", jerr.Error())
+		}
+		logConfs.logdbIP[db.DirName] = db.IP
+	}
 }
 
 func Start(data []byte) {
@@ -156,10 +189,6 @@ func Start(data []byte) {
 func Stop(data []byte) {
 	log.Println("recv stop msg, data:", data)
 	//ExeShellUseArg3("sh", cgServerFile, "stop", data, "")
-}
-
-func Update() {
-
 }
 
 func Ping() {
@@ -234,4 +263,23 @@ func ExeShellUseArg3(syscmd string, dir string, arg1 string, arg2 string, arg3 s
 	}
 	log.Println(string(opBytes))
 	return nil
+}
+
+//获取指定目录及所有子目录下的所有文件，可以匹配后缀过滤。
+func WalkDir(dirPth, suffix string) (files []string, err error) {
+	files = make([]string, 0, 30)
+
+	err = filepath.Walk(dirPth, func(filename string, fi os.FileInfo, err error) error { //遍历目录
+		if fi.IsDir() { // 忽略目录
+			return nil
+		}
+
+		if strings.HasSuffix(fi.Name(), suffix) {
+			files = append(files, filename)
+		}
+
+		return nil
+	})
+
+	return files, err
 }
