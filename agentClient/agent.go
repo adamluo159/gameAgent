@@ -8,19 +8,21 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"encoding/json"
+
+	"fmt"
 
 	"github.com/adamluo159/gameAgent/protocol"
 	"github.com/adamluo159/gameAgent/utils"
 )
 
 type LogsInfo struct {
-	logdbIP  map[string]string
-	StaticIP string
+	logdbIP   map[string]string
+	logPhpArg map[string]string
+	StaticIP  string
 }
 
 type LogdbConf struct {
@@ -32,35 +34,40 @@ var msgMap map[uint32]func([]byte)
 var gConn *net.Conn
 
 var (
-	configDir     string
-	connectIP     string
-	hostName      string
-	hostConfigDir string
-	cgServerFile  string
+	gConfDir     string
+	connectIP    string
+	hostName     string
+	localConfDir string
+	cgProductDir string
+	cgPhp        string
+	phpTemplate  string = "logdb=$s&logdir=%s&method=%s&sdb=%s"
 
 	logConfs LogsInfo
 )
 
 func RegCmd() {
 	logConfs.logdbIP = make(map[string]string)
+	logConfs.logPhpArg = make(map[string]string)
 
 	hostName, _ = os.Hostname()
 	if hostName == "" {
 		log.Println("cannt get machine hostname")
 	}
-	configDir = os.Getenv("HOME") + "/GameConfig"
-	hostConfigDir = configDir + "/" + hostName
-	cgServerFile = os.Getenv("HOME") + "/product/server/cgServer"
+	gConfDir = os.Getenv("HOME") + "/gConf/"
+	localConfDir = os.Getenv("HOME") + "/GameConfig/" + hostName
+	cgProductDir = os.Getenv("HOME") + "/product/server/"
+	cgPhp = cgProductDir + "/php/api/api.php"
 
-	os.Mkdir(configDir, os.ModePerm)
+	os.Mkdir(gConfDir, os.ModePerm)
 	msgMap = make(map[uint32]func([]byte))
 	msgMap[protocol.CmdToken] = CheckRsp
 }
 
 func ExecPhpForLogdb() {
-	//for k := range logConfs.logdbIP {
-
-	//}
+	for k := range logConfs.logPhpArg {
+		log.Println("begin exec php, logdata to logdb, name:", k)
+		ExeShell("php", cgPhp, logConfs.logPhpArg[k])
+	}
 }
 
 func New() {
@@ -154,7 +161,7 @@ func CheckRsp(data []byte) {
 		return
 	}
 	logConfs.StaticIP = p.StaticIp
-	exeErr := ExeShellUseArg3("expect", "./synGameConf_expt", connectIP, hostConfigDir, configDir+"/")
+	exeErr := ExeShellUseArg3("expect", "./synGameConf_expt", connectIP, gConfDir, localConfDir)
 	if exeErr != nil {
 		log.Println("Update cannt work!, reason:", exeErr.Error())
 	}
@@ -162,12 +169,12 @@ func CheckRsp(data []byte) {
 }
 
 func LoadLogFile() {
-	dir, err := ioutil.ReadDir(hostConfigDir)
+	dir, err := ioutil.ReadDir(localConfDir)
 	if err != nil {
 		log.Println("LoadLogFile, read dir err, ", err.Error())
 	}
 	for index := 0; index < len(dir); index++ {
-		file := hostConfigDir + "/" + dir[index].Name() + "/logdbconf"
+		file := localConfDir + "/" + dir[index].Name() + "/logdbconf"
 		l, err := ioutil.ReadFile(file)
 		if err != nil {
 			log.Println("LoadLogFile, read file err, ", file, err.Error())
@@ -178,6 +185,7 @@ func LoadLogFile() {
 			log.Println("LoadLogFile uncode json", jerr.Error())
 		}
 		logConfs.logdbIP[db.DirName] = db.IP
+		logConfs.logPhpArg[db.DirName] = fmt.Sprintf(phpTemplate, db.DirName, db.DirName, "Crontab.dataProcess", logConfs.StaticIP)
 	}
 }
 
@@ -263,23 +271,4 @@ func ExeShellUseArg3(syscmd string, dir string, arg1 string, arg2 string, arg3 s
 	}
 	log.Println(string(opBytes))
 	return nil
-}
-
-//获取指定目录及所有子目录下的所有文件，可以匹配后缀过滤。
-func WalkDir(dirPth, suffix string) (files []string, err error) {
-	files = make([]string, 0, 30)
-
-	err = filepath.Walk(dirPth, func(filename string, fi os.FileInfo, err error) error { //遍历目录
-		if fi.IsDir() { // 忽略目录
-			return nil
-		}
-
-		if strings.HasSuffix(fi.Name(), suffix) {
-			files = append(files, filename)
-		}
-
-		return nil
-	})
-
-	return files, err
 }
