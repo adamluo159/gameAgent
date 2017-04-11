@@ -170,7 +170,7 @@ func CheckRsp(data []byte) {
 
 func LoadLogFile() {
 	hostDir := localDir + hostName
-	dir, err := ioutil.ReadDir(localDir)
+	dir, err := ioutil.ReadDir(hostDir)
 	if err != nil {
 		log.Println("LoadLogFile, read dir err, ", err.Error())
 	}
