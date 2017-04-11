@@ -40,7 +40,7 @@ var (
 	localDir     string
 	cgProductDir string
 	cgPhp        string
-	phpTemplate  string = "logdb=$s&logdir=%s&method=%s&sdb=%s"
+	phpTemplate  string = "logdb=%s&logdir=%s&method=%s&sdb=%s"
 
 	logConfs LogsInfo
 )
