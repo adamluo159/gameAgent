@@ -187,6 +187,7 @@ func LoadLogFile() {
 		}
 		logConfs.logdbIP[db.DirName] = db.IP
 		logConfs.logPhpArg[db.DirName] = fmt.Sprintf(phpTemplate, db.IP, db.DirName, "Crontab.dataProcess", logConfs.StaticIP)
+		log.Println("LoadLogFile, logs:, ", db.DirName, logConfs.logPhpArg[db.DirName])
 	}
 }
 
