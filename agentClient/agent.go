@@ -53,8 +53,8 @@ func RegCmd() {
 	if hostName == "" {
 		log.Println("cannt get machine hostname")
 	}
-	gConfDir = os.Getenv("HOME") + "/gConf/"
-	localConfDir = os.Getenv("HOME") + "/GameConfig/" + hostName
+	gConfDir = os.Getenv("HOME") + "/gConf/" + hostName
+	localConfDir = os.Getenv("HOME") + "/GameConfig/"
 	cgProductDir = os.Getenv("HOME") + "/product/server/"
 	cgPhp = cgProductDir + "/php/api/api.php"
 
@@ -169,12 +169,13 @@ func CheckRsp(data []byte) {
 }
 
 func LoadLogFile() {
-	dir, err := ioutil.ReadDir(localConfDir)
+	hostDir := localConfDir + hostName
+	dir, err := ioutil.ReadDir(hostDir)
 	if err != nil {
 		log.Println("LoadLogFile, read dir err, ", err.Error())
 	}
 	for index := 0; index < len(dir); index++ {
-		file := localConfDir + "/" + dir[index].Name() + "/logdbconf"
+		file := hostDir + "/" + dir[index].Name() + "/logdbconf"
 		l, err := ioutil.ReadFile(file)
 		if err != nil {
 			log.Println("LoadLogFile, read file err, ", file, err.Error())
