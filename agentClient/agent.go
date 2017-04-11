@@ -37,7 +37,7 @@ var (
 	gConfDir     string
 	connectIP    string
 	hostName     string
-	localhostDir string
+	localDir     string
 	cgProductDir string
 	cgPhp        string
 	phpTemplate  string = "logdb=$s&logdir=%s&method=%s&sdb=%s"
@@ -54,11 +54,11 @@ func RegCmd() {
 		log.Println("cannt get machine hostname")
 	}
 	gConfDir = os.Getenv("HOME") + "/gConf/" + hostName
-	localhostDir = os.Getenv("HOME") + "/GameConfig/" + hostName
+	localDir = os.Getenv("HOME") + "/GameConfig/"
 	cgProductDir = os.Getenv("HOME") + "/product/server/"
 	cgPhp = cgProductDir + "/php/api/api.php"
 
-	os.Mkdir(localhostDir, os.ModePerm)
+	os.Mkdir(localDir, os.ModePerm)
 	msgMap = make(map[uint32]func([]byte))
 	msgMap[protocol.CmdToken] = CheckRsp
 }
@@ -161,7 +161,7 @@ func CheckRsp(data []byte) {
 		return
 	}
 	logConfs.StaticIP = p.StaticIp
-	exeErr := ExeShellUseArg3("expect", "./synGameConf_expt", connectIP, gConfDir, localhostDir)
+	exeErr := ExeShellUseArg3("expect", "./synGameConf_expt", connectIP, gConfDir, localDir)
 	if exeErr != nil {
 		log.Println("Update cannt work!, reason:", exeErr.Error())
 	}
@@ -169,12 +169,13 @@ func CheckRsp(data []byte) {
 }
 
 func LoadLogFile() {
-	dir, err := ioutil.ReadDir(localhostDir)
+	hostDir := localDir + hostName
+	dir, err := ioutil.ReadDir(localDir)
 	if err != nil {
 		log.Println("LoadLogFile, read dir err, ", err.Error())
 	}
 	for index := 0; index < len(dir); index++ {
-		file := localhostDir + "/" + dir[index].Name() + "/logdbconf"
+		file := hostDir + "/" + dir[index].Name() + "/logdbconf"
 		l, err := ioutil.ReadFile(file)
 		if err != nil {
 			log.Println("LoadLogFile, read file err, ", file, err.Error())
