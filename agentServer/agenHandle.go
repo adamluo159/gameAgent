@@ -83,3 +83,6 @@ func (c *Client) TokenCheck(data []byte) {
 	}
 	protocol.SendJson(c.conn, protocol.CmdToken, r)
 }
+
+func (c *Client) ZoneStart(zone string) {
+}

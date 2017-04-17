@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -30,17 +29,25 @@ type LogdbConf struct {
 	IP      string
 }
 
-var msgMap map[uint32]func([]byte)
-var gConn *net.Conn
+type ServiceInfo struct {
+	Sname     string
+	Started   bool
+	Gof       bool
+	Operating bool
+}
 
 var (
-	gConfDir     string
-	connectIP    string
-	hostName     string
-	localDir     string
-	cgProductDir string
-	cgPhp        string
-	phpTemplate  string = "logdb=$s&logdir=%s&method=%s&sdb=%s"
+	gConn         *net.Conn
+	msgMap        map[uint32]func([]byte)
+	agentServices map[string]*ServiceInfo //agent起的服务状态(起/停)
+	gConfDir      string
+	connectIP     string
+	hostName      string
+	localDir      string
+	cgProductDir  string
+	cgPhp         string
+	cgServerFile  string
+	phpTemplate   string = "logdb=$s&logdir=%s&method=%s&sdb=%s"
 
 	logConfs LogsInfo
 )
@@ -48,26 +55,54 @@ var (
 func RegCmd() {
 	logConfs.logdbIP = make(map[string]string)
 	logConfs.logPhpArg = make(map[string]string)
+	agentServices = make(map[string]*ServiceInfo)
 
 	hostName, _ = os.Hostname()
 	if hostName == "" {
 		log.Println("cannt get machine hostname")
 	}
+
 	gConfDir = os.Getenv("HOME") + "/gConf/" + hostName
 	localDir = os.Getenv("HOME") + "/GameConfig/"
 	cgProductDir = os.Getenv("HOME") + "/product/server/"
+	cgServerFile = cgProductDir + "/cgserver"
 	cgPhp = cgProductDir + "/php/api/api.php"
 
 	os.Mkdir(localDir, os.ModePerm)
 	msgMap = make(map[uint32]func([]byte))
 	msgMap[protocol.CmdToken] = CheckRsp
+	msgMap[protocol.CmdStartZone] = StartZone
+	msgMap[protocol.CmdStopZone] = StopZone
 }
 
 func ExecPhpForLogdb() {
 	for k := range logConfs.logPhpArg {
 		log.Println("begin exec php, logdata to logdb, name:", k)
-		ExeShell("php", cgPhp, logConfs.logPhpArg[k])
+		utils.ExeShell("php", cgPhp, logConfs.logPhpArg[k])
 	}
+}
+
+func CheckProcessStatus(checkShellName string, dstName string) {
+	for {
+		s := agentServices[dstName]
+		if s.Started == false {
+			s.Gof = false
+			break
+		}
+		if CheckProcess(checkShellName, dstName) == false {
+			log.Println("check process error ", dstName)
+		}
+		time.Sleep(time.Minute * 30)
+	}
+}
+
+func CheckProcess(checkShellName string, dstName string) bool {
+	check := cgProductDir + "/agent/" + checkShellName
+	ret, _ := utils.ExeShell("sh", check, dstName)
+	if ret != "" {
+		return false
+	}
+	return true
 }
 
 func New() {
@@ -161,7 +196,7 @@ func CheckRsp(data []byte) {
 		return
 	}
 	logConfs.StaticIP = p.StaticIp
-	exeErr := ExeShellUseArg3("expect", "./synGameConf_expt", connectIP, gConfDir, localDir)
+	_, exeErr := utils.ExeShellArgs3("expect", "./synGameConf_expt", connectIP, gConfDir, localDir)
 	if exeErr != nil {
 		log.Println("Update cannt work!, reason:", exeErr.Error())
 	}
@@ -175,7 +210,8 @@ func LoadLogFile() {
 		log.Println("LoadLogFile, read dir err, ", err.Error())
 	}
 	for index := 0; index < len(dir); index++ {
-		file := hostDir + "/" + dir[index].Name() + "/logdbconf"
+		serviceName := dir[index].Name()
+		file := hostDir + "/" + serviceName + "/logdbconf"
 		l, err := ioutil.ReadFile(file)
 		if err != nil {
 			log.Println("LoadLogFile, read file err, ", file, err.Error())
@@ -188,89 +224,71 @@ func LoadLogFile() {
 		logConfs.logdbIP[db.DirName] = db.IP
 		logConfs.logPhpArg[db.DirName] = fmt.Sprintf(phpTemplate, db.IP, db.DirName, "Crontab.dataProcess", logConfs.StaticIP)
 		log.Println("LoadLogFile, logs:, ", db.DirName, logConfs.logPhpArg[db.DirName])
+		InitServiceStatus(serviceName)
 	}
 }
 
-func Start(data []byte) {
-	log.Println("recv start msg, data:", data)
-	//ExeShellUseArg3("sh", cgServerFile, "start", data, "")
-}
+//目前只有zone级服务初始化,后面添加登陆、充值等
+func InitServiceStatus(name string) {
+	agentServices[name].Started = CheckProcess("checkZoneProcess", name)
+	agentServices[name].Gof = false
 
-func Stop(data []byte) {
-	log.Println("recv stop msg, data:", data)
-	//ExeShellUseArg3("sh", cgServerFile, "stop", data, "")
-}
-
-func Ping() {
-	for {
-		log.Println("send ping ...")
-		protocol.Send(gConn, protocol.CmdUpdateHost, "ok")
-		time.Sleep(10 * time.Millisecond)
+	if agentServices[name].Started {
+		go CheckProcessStatus("checkZoneProcess", name)
+		agentServices[name].Gof = true
 	}
 }
 
-func ExeShell(syscmd string, dir string, args string) error {
-	log.Println("begin execute shell.....", syscmd, dir, "--", args)
-	// 执行系统命令
-	// 第一个参数是命令名称
-	// 后面参数可以有多个，命令参数
-	cmd := exec.Command(syscmd, dir, args) //"GameConfig/gitCommit", "zoneo")
-	// 获取输出对象，可以从该对象中读取输出结果
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Fatal(err)
-		return err
+func StartZone(data []byte) {
+	zone := string(data)
+	if agentServices[zone].Operating {
+		return
 	}
-	// 保证关闭输出流
-	defer stdout.Close()
-	// 运行命令
-	if err := cmd.Start(); err != nil {
-		log.Fatal(err)
-		return err
+	agentServices[zone].Operating = true
+	log.Println("recv start zone, zone:", zone)
+	s := CheckProcess("checkZoneProcess", zone)
+	if s == false {
+		utils.ExeShellArgs3("sh", cgServerFile, "start", zone, "")
+		for index := 0; index < 6; index++ {
+			if s {
+				break
+			}
+			s = CheckProcess("checkZoneProcess", zone)
+			time.Sleep(time.Second * 5)
+		}
 	}
-	// 读取输出结果
-	opBytes, err := ioutil.ReadAll(stdout)
-	if err != nil {
-		log.Fatal(err)
-		return err
+	agentServices[zone].Started = s
+	if s == true && agentServices[zone].Gof == false {
+		go CheckProcessStatus("checkZoneProcess", zone)
+		agentServices[zone].Gof = true
 	}
-	e := cmd.Wait()
-	if e != nil {
-		log.Println("Exeshell error:", e.Error())
-	}
-	log.Println(string(opBytes))
-	return nil
+	agentServices[zone].Operating = false
 }
 
-func ExeShellUseArg3(syscmd string, dir string, arg1 string, arg2 string, arg3 string) error {
-	log.Println("begin execute shell.....", syscmd, dir, "--", arg1, arg2)
-	// 执行系统命令
-	// 第一个参数是命令名称
-	// 后面参数可以有多个，命令参数
-	cmd := exec.Command(syscmd, dir, arg1, arg2, arg3) //"GameConfig/gitCommit", "zoneo")
-	// 获取输出对象，可以从该对象中读取输出结果
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Fatal(err)
-		return err
+func StopZone(data []byte) {
+	zone := string(data)
+	if agentServices[zone].Operating {
+		return
 	}
-	// 保证关闭输出流
-	defer stdout.Close()
-	// 运行命令
-	if err := cmd.Start(); err != nil {
-		log.Fatal(err)
-		return err
-	}
-	// 读取输出结果
-	opBytes, err := ioutil.ReadAll(stdout)
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
-	e := cmd.Wait()
-	if e != nil {
-		log.Println("Exeshell error:", e.Error())
-	}
-	log.Println(string(opBytes))
-	return nil
+	agentServices[zone].Operating = true
+	log.Println("recv stop msg, ", zone)
+	utils.ExeShellArgs2("sh", cgServerFile, "stop", zone)
+	agentServices[zone].Operating = false
 }
+
+func GetSeviceStarted(data []byte) {
+	zone := string(data)
+	p := protocol.C2sServiceStartStatus{
+		Name:    zone,
+		Started: agentServices[zone].Started,
+	}
+	protocol.SendJson(gConn, protocol.CmdServiceStarted, p)
+}
+
+//func Ping() {
+//	for {
+//		log.Println("send ping ...")
+//		protocol.Send(gConn, protocol.CmdUpdateHost, "ok")
+//		time.Sleep(10 * time.Millisecond)
+//	}
+//}

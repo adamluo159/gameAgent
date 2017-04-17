@@ -13,10 +13,8 @@ type Client struct {
 
 // TCP server
 type server struct {
-	clients                  map[string]*Client
-	address                  string // Address to open connection: localhost:9999
-	onClientConnectionClosed func(c *Client, err error)
-	onNewMessage             func(c *Client, message string)
+	clients map[string]*Client
+	address string // Address to open connection: localhost:9999
 }
 
 var gserver *server
@@ -54,16 +52,16 @@ func New(address string) {
 }
 
 func StartZone(host string, zid int) bool {
-	//log.Println(" recv web cmd startzone", host, " zid:", zid)
-	//c := gserver.clients[host]
-	//if c == nil {
-	//	return false
-	//}
-	//zone := "zone" + strconv.Itoa(zid)
-	//err := c.SendBytes("start", zone)
-	//if err != nil {
-	//	log.Println(host + "  startzone: " + err.Error())
-	//}
+	//	log.Println(" recv web cmd startzone", host, " zid:", zid)
+	//	c := gserver.clients[host]
+	//	if c == nil {
+	//		return false
+	//	}
+	//	zone := "zone" + strconv.Itoa(zid)
+	//	err := c.SendBytes("start", zone)
+	//	if err != nil {
+	//		log.Println(host + "  startzone: " + err.Error())
+	//	}
 	return true
 }
 

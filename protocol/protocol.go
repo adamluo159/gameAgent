@@ -14,11 +14,12 @@ const (
 )
 
 const (
-	CmdNone       uint32 = 0
-	CmdToken      uint32 = 1 //token验证
-	CmdStartZone  uint32 = 2 //区服启动
-	CmdStopZone   uint32 = 3 //区服停止
-	CmdUpdateHost uint32 = 4 //机器配置更新
+	CmdNone           uint32 = 0
+	CmdToken          uint32 = 1 //token验证
+	CmdStartZone      uint32 = 2 //区服启动
+	CmdStopZone       uint32 = 3 //区服停
+	CmdServiceStarted uint32 = 4 //获取服务是否启动
+	CmdUpdateHost     uint32 = 5 //机器配置更新
 )
 
 type C2sToken struct {
@@ -29,6 +30,11 @@ type C2sToken struct {
 type S2cToken struct {
 	StaticIp     string //统计后台ip
 	Applications []string
+}
+
+type C2sServiceStartStatus struct {
+	Name    string
+	Started bool
 }
 
 func Packet(cmd uint32, data []byte) []byte {
