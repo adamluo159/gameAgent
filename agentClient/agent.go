@@ -48,7 +48,6 @@ var (
 	cgPhp         string
 	cgServerFile  string
 	phpTemplate   string = "logdb=$s&logdir=%s&method=%s&sdb=%s"
-
 	logConfs LogsInfo
 )
 
