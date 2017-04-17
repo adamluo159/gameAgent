@@ -47,8 +47,8 @@ var (
 	cgProductDir  string
 	cgPhp         string
 	cgServerFile  string
-	phpTemplate   string = "logdb=$s&logdir=%s&method=%s&sdb=%s"
-	logConfs LogsInfo
+	phpTemplate   string = "logdb=%s&logdir=%s&method=%s&sdb=%s"
+	logConfs      LogsInfo
 )
 
 func RegCmd() {
@@ -75,8 +75,9 @@ func RegCmd() {
 }
 
 func ExecPhpForLogdb() {
+	log.Println(" ExecPhpForLogdb---:", logConfs)
 	for k := range logConfs.logPhpArg {
-		log.Println("begin exec php, logdata to logdb, name:", k)
+		log.Println("begin exec php, logdata to logdb, name:", k, logConfs.logPhpArg)
 		utils.ExeShell("php", cgPhp, logConfs.logPhpArg[k])
 	}
 }
@@ -114,7 +115,6 @@ func New() {
 	connectIP = strings.Replace(string(ip), "\n", "", -1)
 	connStr := connectIP + ":3300"
 
-	utils.SetTimerPerHour(ExecPhpForLogdb)
 	for {
 		Conn(connStr)
 		time.Sleep(5 * time.Second)
@@ -221,14 +221,16 @@ func LoadLogFile() {
 			log.Println("LoadLogFile uncode json", jerr.Error())
 		}
 		logConfs.logdbIP[db.DirName] = db.IP
-		logConfs.logPhpArg[db.DirName] = fmt.Sprintf(phpTemplate, db.IP, db.DirName, "Crontab.dataProcess", logConfs.StaticIP)
+		logConfs.logPhpArg[db.DirName] = fmt.Sprintf(phpTemplate, db.IP, db.DirName, "Crontab.dataProcess", "192.168.1.244")
 		log.Println("LoadLogFile, logs:, ", db.DirName, logConfs.logPhpArg[db.DirName])
 		InitServiceStatus(serviceName)
 	}
+	utils.SetTimerPerHour(ExecPhpForLogdb)
 }
 
 //目前只有zone级服务初始化,后面添加登陆、充值等
 func InitServiceStatus(name string) {
+	agentServices[name] = &ServiceInfo{}
 	agentServices[name].Started = CheckProcess("checkZoneProcess", name)
 	agentServices[name].Gof = false
 
