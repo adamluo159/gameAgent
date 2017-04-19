@@ -221,7 +221,7 @@ func LoadLogFile() {
 			log.Println("LoadLogFile uncode json", jerr.Error())
 		}
 		logConfs.logdbIP[db.DirName] = db.IP
-		logConfs.logPhpArg[db.DirName] = fmt.Sprintf(phpTemplate, db.IP, db.DirName, "Crontab.dataProcess", "192.168.1.244")
+		logConfs.logPhpArg[db.DirName] = fmt.Sprintf(phpTemplate, db.IP, db.DirName, "Crontab.dataProcess", db.IP)
 		log.Println("LoadLogFile, logs:, ", db.DirName, logConfs.logPhpArg[db.DirName])
 		InitServiceStatus(serviceName)
 	}
