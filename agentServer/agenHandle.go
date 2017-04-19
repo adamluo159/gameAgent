@@ -73,12 +73,17 @@ func (c *Client) TokenCheck(data []byte) {
 
 	m := machine.GetMachineByName(p.Host)
 	if m == nil {
-		log.Println("TokenCheck cant find machine, host:", c.host)
+		log.Println("TokenCheck cant find machine, host:", p.Host)
+		return
+	}
+	sm := machine.GetMachineByName("master")
+	if sm == nil {
+		log.Println("TokenCheck cant find staticIp machine, host:", "master")
 		return
 	}
 
 	r := protocol.S2cToken{
-		StaticIp:     "192.168.1.1",
+		StaticIp:     m.IP,
 		Applications: m.Applications,
 	}
 	protocol.SendJson(c.conn, protocol.CmdToken, r)

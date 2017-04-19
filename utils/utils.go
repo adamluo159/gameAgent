@@ -44,7 +44,7 @@ func CreateMd5(gen string) string {
 }
 
 func ExeShell(syscmd string, dir string, args string) (string, error) {
-	log.Println("begin execute shell.....", syscmd, dir, "--", args)
+	log.Println("begin execute shell.....", syscmd, dir, args)
 	// 执行系统命令
 	// 第一个参数是命令名称
 	// 后面参数可以有多个，命令参数
@@ -73,6 +73,7 @@ func ExeShell(syscmd string, dir string, args string) (string, error) {
 		log.Println("Exeshell error:", e.Error())
 	}
 	s := strings.Replace(string(opBytes), "\n", "", -1)
+	log.Println(string(opBytes))
 	return s, nil
 }
 
