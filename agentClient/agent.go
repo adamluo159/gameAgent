@@ -75,10 +75,11 @@ func RegCmd() {
 }
 
 func ExecPhpForLogdb() {
-	log.Println(" ExecPhpForLogdb---:", logConfs)
-	for k := range logConfs.logPhpArg {
-		log.Println("begin exec php, logdata to logdb, name:", k, logConfs.logPhpArg)
-		utils.ExeShell("php", cgPhp, logConfs.logPhpArg[k])
+	for {
+		for k := range logConfs.logPhpArg {
+			utils.ExeShell("php", cgPhp, logConfs.logPhpArg[k])
+		}
+		time.Sleep(time.Minute * 5)
 	}
 }
 
@@ -225,7 +226,8 @@ func LoadLogFile() {
 		log.Println("LoadLogFile, logs:, ", db.DirName, logConfs.logPhpArg[db.DirName])
 		InitServiceStatus(serviceName)
 	}
-	utils.SetTimerPerHour(ExecPhpForLogdb)
+	//utils.SetTimerPerHour(ExecPhpForLogdb)
+	go ExecPhpForLogdb()
 }
 
 //目前只有zone级服务初始化,后面添加登陆、充值等
