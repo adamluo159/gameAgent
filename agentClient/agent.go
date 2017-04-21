@@ -64,7 +64,7 @@ func RegCmd() {
 	gConfDir = os.Getenv("HOME") + "/gConf/" + hostName
 	localDir = os.Getenv("HOME") + "/GameConfig/"
 	cgProductDir = os.Getenv("HOME") + "/product/server/"
-	cgServerFile = cgProductDir + "/cgserver"
+	cgServerFile = cgProductDir + "/cgServer"
 	cgPhp = cgProductDir + "/php/api/api.php"
 
 	os.Mkdir(localDir, os.ModePerm)
@@ -227,7 +227,7 @@ func LoadLogFile() {
 		InitServiceStatus(serviceName)
 	}
 	//utils.SetTimerPerHour(ExecPhpForLogdb)
-	go ExecPhpForLogdb()
+	//go ExecPhpForLogdb()
 }
 
 //目前只有zone级服务初始化,后面添加登陆、充值等
@@ -309,6 +309,7 @@ func StopZone(data []byte) {
 	agentServices[zone].Operating = true
 	utils.ExeShellArgs2("sh", cgServerFile, "stop", zone)
 	agentServices[zone].Operating = false
+	r.Do = protocol.NotifyDoSuc
 	protocol.SendJson(gConn, protocol.CmdStopZone, r)
 }
 
