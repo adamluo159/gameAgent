@@ -245,16 +245,15 @@ func InitServiceStatus(name string) {
 func StartZone(data []byte) {
 	p := protocol.S2cNotifyDo{}
 	err := json.Unmarshal(data, &p)
-	r := protocol.C2sNotifyDone{
-		Req: p.Req,
-		Do:  protocol.NotifyDoFail,
-	}
 	if err != nil {
-		protocol.SendJson(gConn, protocol.CmdStartZone, r)
 		log.Println(" StartZone uncode json err, zone:", err.Error())
 		return
 	}
 	zone := p.Name
+	r := protocol.C2sNotifyDone{
+		Req: p.Req,
+		Do:  protocol.NotifyDoFail,
+	}
 
 	if agentServices[zone].Operating {
 		r.Do = protocol.NotifyDoing
@@ -289,17 +288,16 @@ func StartZone(data []byte) {
 
 func StopZone(data []byte) {
 	p := protocol.S2cNotifyDo{}
-	r := protocol.C2sNotifyDone{
-		Req: p.Req,
-		Do:  protocol.NotifyDoFail,
-	}
 	err := json.Unmarshal(data, &p)
 	if err != nil {
-		protocol.SendJson(gConn, protocol.CmdStopZone, r)
 		log.Println(" Stop Zone uncode json err, zone:", err.Error())
 		return
 	}
 	zone := p.Name
+	r := protocol.C2sNotifyDone{
+		Req: p.Req,
+		Do:  protocol.NotifyDoFail,
+	}
 	log.Println("recv stop msg, Name:", zone, "req:", p.Req)
 	if agentServices[zone].Operating {
 		r.Do = protocol.NotifyDoing

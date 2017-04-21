@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"log"
+	"time"
 
 	"errors"
 	"fmt"
@@ -74,7 +75,15 @@ func WaitCallBack(req int, reply interface{}) error {
 	log.Println("wait call back msg, req:", req)
 	ch := make(chan interface{})
 	indexChanMap[req] = ch
-	reply = <-ch
+	t := time.NewTimer(time.Second * 30)
+	select {
+	case reply = <-ch:
+		log.Println("wait callback get reply:", reply)
+	case <-t.C:
+		delete(indexChanMap, req)
+		log.Println("wait cb overtime in 30 second, req:", req)
+		return errors.New(fmt.Sprintf("wait cb overtime in 30 second, req:%d", req))
+	}
 	return nil
 }
 
