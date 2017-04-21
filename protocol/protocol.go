@@ -3,6 +3,7 @@ package protocol
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/gob"
 	"encoding/json"
 	"log"
 	"time"
@@ -63,9 +64,16 @@ func GetReqIndex() int {
 	gReqIndex++
 	return gReqIndex
 }
+func DeepCopy(dst, src interface{}) error {
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(src); err != nil {
+		return err
+	}
+	return gob.NewDecoder(bytes.NewBuffer(buf.Bytes())).Decode(dst)
+}
 
 func NotifyWait(req int, v interface{}) {
-	log.Println("notify wait , req:", req, indexChanMap)
+	log.Println("notify wait , req:", req, indexChanMap, v)
 	if c, ok := indexChanMap[req]; ok {
 		c <- v
 		delete(indexChanMap, req)
@@ -77,7 +85,8 @@ func WaitCallBack(req int, reply interface{}) error {
 	indexChanMap[req] = ch
 	t := time.NewTimer(time.Second * 30)
 	select {
-	case reply = <-ch:
+	case r := <-ch:
+		DeepCopy(reply, r)
 		log.Println("wait callback get reply:", reply)
 	case <-t.C:
 		delete(indexChanMap, req)

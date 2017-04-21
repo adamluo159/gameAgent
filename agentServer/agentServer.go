@@ -69,6 +69,7 @@ func StartZone(host string, zid int) int {
 	}
 	s := protocol.C2sNotifyDone{}
 	protocol.WaitCallBack(p.Req, &s)
+	log.Println("start zone aaaaa:", s)
 	return s.Do
 }
 
