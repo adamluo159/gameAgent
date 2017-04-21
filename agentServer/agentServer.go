@@ -55,6 +55,7 @@ func StartZone(host string, zid int) int {
 	log.Println(" recv web cmd startzone", host, " zid:", zid, "req:", req)
 	c := gserver.clients[host]
 	if c == nil {
+		log.Println(" cannt find host:", host)
 		return protocol.NotifyDoFail
 	}
 	p := protocol.S2cNotifyDo{
