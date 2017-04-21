@@ -97,10 +97,12 @@ func CheckProcessStatus(checkShellName string, dstName string) {
 	}
 }
 
+//检查进程是否存在
 func CheckProcess(checkShellName string, dstName string) bool {
 	check := cgProductDir + "/agent/" + checkShellName
 	ret, _ := utils.ExeShell("sh", check, dstName)
-	if ret != "" {
+	s := strings.Replace(string(ret), " ", "", -1)
+	if s != "" {
 		return false
 	}
 	return true
@@ -260,7 +262,6 @@ func StartZone(data []byte) {
 		protocol.SendJson(gConn, protocol.CmdStartZone, r)
 		return
 	}
-
 	agentServices[zone].Operating = true
 	log.Println("recv start zone, zone:", zone)
 	s := CheckProcess("checkZoneProcess", zone)
