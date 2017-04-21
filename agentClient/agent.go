@@ -243,10 +243,25 @@ func InitServiceStatus(name string) {
 }
 
 func StartZone(data []byte) {
-	zone := string(data)
-	if agentServices[zone].Operating {
+	p := protocol.S2cNotifyDo{}
+	err := json.Unmarshal(data, &p)
+	r := protocol.C2sNotifyDone{
+		Req: p.Req,
+		Do:  protocol.NotifyDoFail,
+	}
+	if err != nil {
+		protocol.SendJson(gConn, protocol.CmdStartZone, r)
+		log.Println(" StartZone uncode json err, zone:", err.Error())
 		return
 	}
+	zone := p.Name
+
+	if agentServices[zone].Operating {
+		r.Do = protocol.NotifyDoing
+		protocol.SendJson(gConn, protocol.CmdStartZone, r)
+		return
+	}
+
 	agentServices[zone].Operating = true
 	log.Println("recv start zone, zone:", zone)
 	s := CheckProcess("checkZoneProcess", zone)
@@ -261,22 +276,40 @@ func StartZone(data []byte) {
 		}
 	}
 	agentServices[zone].Started = s
-	if s == true && agentServices[zone].Gof == false {
-		go CheckProcessStatus("checkZoneProcess", zone)
-		agentServices[zone].Gof = true
+	if s == true {
+		r.Do = protocol.NotifyDoSuc
+		if agentServices[zone].Gof == false {
+			go CheckProcessStatus("checkZoneProcess", zone)
+			agentServices[zone].Gof = true
+		}
 	}
 	agentServices[zone].Operating = false
+	protocol.SendJson(gConn, protocol.CmdStartZone, r)
 }
 
 func StopZone(data []byte) {
-	zone := string(data)
+	p := protocol.S2cNotifyDo{}
+	r := protocol.C2sNotifyDone{
+		Req: p.Req,
+		Do:  protocol.NotifyDoFail,
+	}
+	err := json.Unmarshal(data, &p)
+	if err != nil {
+		protocol.SendJson(gConn, protocol.CmdStopZone, r)
+		log.Println(" Stop Zone uncode json err, zone:", err.Error())
+		return
+	}
+	zone := p.Name
+	log.Println("recv stop msg, Name:", zone, "req:", p.Req)
 	if agentServices[zone].Operating {
+		r.Do = protocol.NotifyDoing
+		protocol.SendJson(gConn, protocol.CmdStopZone, r)
 		return
 	}
 	agentServices[zone].Operating = true
-	log.Println("recv stop msg, ", zone)
 	utils.ExeShellArgs2("sh", cgServerFile, "stop", zone)
 	agentServices[zone].Operating = false
+	protocol.SendJson(gConn, protocol.CmdStopZone, r)
 }
 
 func GetSeviceStarted(data []byte) {

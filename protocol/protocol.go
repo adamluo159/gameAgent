@@ -6,11 +6,23 @@ import (
 	"encoding/json"
 	"log"
 
+	"errors"
+	"fmt"
 	"net"
+)
+
+var (
+	gReqIndex    int                      = 1 //同步消息序号
+	indexChanMap map[int]chan interface{} = make(map[int]chan interface{})
 )
 
 const (
 	HSize int = 4
+
+	//agent反馈的状态
+	NotifyDoFail int = 1
+	NotifyDoSuc  int = 2
+	NotifyDoing  int = 3
 )
 
 const (
@@ -35,6 +47,35 @@ type S2cToken struct {
 type C2sServiceStartStatus struct {
 	Name    string
 	Started bool
+}
+
+type S2cNotifyDo struct {
+	Name string
+	Req  int
+}
+type C2sNotifyDone struct {
+	Req int
+	Do  int
+}
+
+func GetReqIndex() int {
+	gReqIndex++
+	return gReqIndex
+}
+
+func NotifyWait(req int, v interface{}) {
+	log.Println("notify wait , req:", req)
+	if c, ok := indexChanMap[req]; ok {
+		c <- v
+		delete(indexChanMap, req)
+	}
+}
+func WaitCallBack(req int, reply interface{}) error {
+	log.Println("wait call back msg, req:", req)
+	ch := make(chan interface{})
+	indexChanMap[req] = ch
+	reply = <-ch
+	return nil
 }
 
 func Packet(cmd uint32, data []byte) []byte {
@@ -78,37 +119,33 @@ func UnPacket(length *int, msgbuf *bytes.Buffer) (uint32, []byte) {
 	return cmd, data
 }
 
-func Send(conn *net.Conn, cmd uint32, s string) {
+func Send(conn *net.Conn, cmd uint32, s string) error {
 	if conn == nil {
-		log.Printf("send msg cmd:%d, conn pointer is nil", cmd, conn)
-		return
+		return errors.New(fmt.Sprintf("send msg cmd:%d, conn pointer is nil", cmd, conn))
 	}
 
 	b := Packet(cmd, []byte(s))
 	_, err := (*conn).Write(b)
 	if err != nil {
-		log.Printf("send msg error, cmd:%d, s:%s, err:%s", cmd, s, err.Error())
-	} else {
-		log.Println("send msg:", len(b), cmd, s)
+		return err
 	}
-
+	log.Println("send msg:", len(b), cmd, s)
+	return nil
 }
 
-func SendJson(conn *net.Conn, cmd uint32, v interface{}) {
+func SendJson(conn *net.Conn, cmd uint32, v interface{}) error {
 	if conn == nil {
-		log.Printf("PacketJson error, cmd:%d, conn pointer is nil", cmd, conn)
-		return
+		return errors.New(fmt.Sprintf("sendjson send msg cmd:%d, conn pointer is nil", cmd, conn))
 	}
 	data, err := json.Marshal(v)
 	if err != nil {
-		log.Printf("PacketJson error, cmd:%d, err:%s ", cmd, err.Error())
-		return
+		return err
 	}
 	jsonBytes := Packet(cmd, data)
 	_, jerr := (*conn).Write(jsonBytes)
 	if jerr != nil {
-		log.Printf("send msg error, cmd:%d, v:%s, err:%s", cmd, v, jerr.Error())
-	} else {
-		log.Println("send msg:", cmd, len(jsonBytes), string(jsonBytes))
+		return jerr
 	}
+	log.Println("send msg:", cmd, len(jsonBytes), string(jsonBytes))
+	return nil
 }

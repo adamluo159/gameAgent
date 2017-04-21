@@ -12,7 +12,8 @@ import (
 
 func (c *Client) RegCmd() *map[uint32]func(data []byte) {
 	return &map[uint32]func(data []byte){
-		protocol.CmdToken: c.TokenCheck,
+		protocol.CmdToken:     c.TokenCheck,
+		protocol.CmdStartZone: c.CallBackHandle,
 	}
 }
 
@@ -89,5 +90,12 @@ func (c *Client) TokenCheck(data []byte) {
 	protocol.SendJson(c.conn, protocol.CmdToken, r)
 }
 
-func (c *Client) ZoneStart(zone string) {
+func (c *Client) CallBackHandle(data []byte) {
+	r := protocol.C2sNotifyDone{}
+	err := json.Unmarshal(data, &r)
+	if err != nil {
+		log.Println("CallBackHandle, uncode error: ", string(data))
+		return
+	}
+	protocol.NotifyWait(r.Req, r)
 }

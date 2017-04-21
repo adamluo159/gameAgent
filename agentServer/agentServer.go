@@ -3,6 +3,9 @@ package agentServer
 import (
 	"log"
 	"net"
+	"strconv"
+
+	"github.com/adamluo159/gameAgent/protocol"
 )
 
 // Client holds info about connection
@@ -44,39 +47,49 @@ func New(address string) {
 		address: address,
 		clients: make(map[string]*Client),
 	}
-	//msgMap = make(map[string]func(c *Client, a *AgentMsg))
-	//msgMap["token"] = TokenCheck
-	//msgMap["ping"] = Ping
-
 	gserver.Listen()
 }
 
-func StartZone(host string, zid int) bool {
-	//	log.Println(" recv web cmd startzone", host, " zid:", zid)
-	//	c := gserver.clients[host]
-	//	if c == nil {
-	//		return false
-	//	}
-	//	zone := "zone" + strconv.Itoa(zid)
-	//	err := c.SendBytes("start", zone)
-	//	if err != nil {
-	//		log.Println(host + "  startzone: " + err.Error())
-	//	}
-	return true
+func StartZone(host string, zid int) int {
+	req := protocol.GetReqIndex()
+	log.Println(" recv web cmd startzone", host, " zid:", zid, "req:", req)
+	c := gserver.clients[host]
+	if c == nil {
+		return protocol.NotifyDoFail
+	}
+	p := protocol.S2cNotifyDo{
+		Name: "zone" + strconv.Itoa(zid),
+		Req:  req,
+	}
+	err := protocol.SendJson(c.conn, protocol.CmdStartZone, p)
+	if err != nil {
+		log.Println(host + "  startzone: " + err.Error())
+		return protocol.NotifyDoFail
+	}
+	s := protocol.C2sNotifyDone{}
+	protocol.WaitCallBack(p.Req, &s)
+	return s.Do
 }
 
-func StopZone(host string, zid int) bool {
-	//log.Println(" recv web cmd stopzone", host, " zid:", zid)
-	//c := gserver.clients[host]
-	//if c == nil {
-	//	return false
-	//}
-	//zone := "zone" + strconv.Itoa(zid)
-	//err := c.SendBytes("stop", zone)
-	//if err != nil {
-	//	log.Println(host + "  stopzone: " + err.Error())
-	//}
-	return true
+func StopZone(host string, zid int) int {
+	req := protocol.GetReqIndex()
+	log.Println(" recv web cmd stopzone", host, " zid:", zid, "req:", req)
+	c := gserver.clients[host]
+	if c == nil {
+		return protocol.NotifyDoFail
+	}
+	p := protocol.S2cNotifyDo{
+		Name: "zone" + strconv.Itoa(zid),
+		Req:  req,
+	}
+	err := protocol.SendJson(c.conn, protocol.CmdStopZone, p)
+	if err != nil {
+		log.Println(host + "  Stopzone: " + err.Error())
+		return protocol.NotifyDoFail
+	}
+	s := protocol.C2sNotifyDone{}
+	protocol.WaitCallBack(p.Req, &s)
+	return s.Do
 }
 
 func Update(host string) {
