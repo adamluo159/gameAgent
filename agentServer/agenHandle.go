@@ -14,6 +14,7 @@ func (c *Client) RegCmd() *map[uint32]func(data []byte) {
 	return &map[uint32]func(data []byte){
 		protocol.CmdToken:     c.TokenCheck,
 		protocol.CmdStartZone: c.CallBackHandle,
+		protocol.CmdStopZone:  c.CallBackHandle,
 	}
 }
 

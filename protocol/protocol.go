@@ -65,14 +65,14 @@ func GetReqIndex() int {
 }
 
 func NotifyWait(req int, v interface{}) {
-	log.Println("notify wait , req:", req)
+	log.Println("notify wait , req:", req, indexChanMap)
 	if c, ok := indexChanMap[req]; ok {
 		c <- v
 		delete(indexChanMap, req)
 	}
 }
 func WaitCallBack(req int, reply interface{}) error {
-	log.Println("wait call back msg, req:", req)
+	log.Println("wait call back msg, req:", req, indexChanMap)
 	ch := make(chan interface{})
 	indexChanMap[req] = ch
 	t := time.NewTimer(time.Second * 30)
