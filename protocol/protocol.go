@@ -42,13 +42,7 @@ type C2sToken struct {
 }
 
 type S2cToken struct {
-	StaticIp     string //统计后台ip
 	Applications []string
-}
-
-type C2sServiceStartStatus struct {
-	Name    string
-	Started bool
 }
 
 type S2cNotifyDo struct {

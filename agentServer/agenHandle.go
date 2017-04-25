@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/adamluo159/admin-react/server/machine"
 	"github.com/adamluo159/gameAgent/protocol"
 	"github.com/adamluo159/gameAgent/utils"
 )
@@ -33,7 +32,8 @@ func (c *Client) OnMessage() {
 		// 读取数据
 		n, err := (*c.conn).Read(databuf)
 		if err != nil {
-			log.Printf("Read error: %s\n", err)
+			log.Printf("Read error: %s host:%s\n", err, c.host)
+			gserver.ClientDisconnect(c.host)
 			return
 		}
 		// 数据添加到消息缓冲
@@ -73,19 +73,17 @@ func (c *Client) TokenCheck(data []byte) {
 	c.host = p.Host
 	gserver.clients[p.Host] = c
 
-	m := machine.GetMachineByName(p.Host)
+	m := gserver.mhMgr.GetMachineByName(p.Host)
 	if m == nil {
 		log.Println("TokenCheck cant find machine, host:", p.Host)
 		return
 	}
-	sm := machine.GetMachineByName("master")
+	sm := gserver.mhMgr.GetMachineByName("master")
 	if sm == nil {
 		log.Println("TokenCheck cant find staticIp machine, host:", "master")
 		return
 	}
-
 	r := protocol.S2cToken{
-		StaticIp:     m.IP,
 		Applications: m.Applications,
 	}
 	protocol.SendJson(c.conn, protocol.CmdToken, r)

@@ -5,6 +5,7 @@ import (
 	"net"
 	"strconv"
 
+	"github.com/adamluo159/admin-react/server/comInterface"
 	"github.com/adamluo159/gameAgent/protocol"
 )
 
@@ -15,15 +16,16 @@ type Client struct {
 }
 
 // TCP server
-type server struct {
+type Aserver struct {
 	clients map[string]*Client
 	address string // Address to open connection: localhost:9999
+	mhMgr   comInterface.MachineMgr
 }
 
-var gserver *server
+var gserver *Aserver
 
 // Start network server
-func (s *server) Listen() {
+func (s *Aserver) Listen() {
 	listener, err := net.Listen("tcp", s.address)
 	if err != nil {
 		log.Fatal("Error starting TCP server.")
@@ -41,19 +43,27 @@ func (s *server) Listen() {
 }
 
 // Creates new tcp server instance
-func New(address string) {
+func New(address string) *Aserver {
 	log.Println("Creating server with address", address)
-	gserver = &server{
+	gserver = &Aserver{
 		address: address,
 		clients: make(map[string]*Client),
 	}
-	gserver.Listen()
+	return gserver
 }
 
-func StartZone(host string, zid int) int {
+func (s *Aserver) Init(m comInterface.MachineMgr) {
+	s.mhMgr = m
+}
+
+func (s *Aserver) ClientDisconnect(host string) {
+	delete(s.clients, host)
+}
+
+func (s *Aserver) StartZone(host string, zid int) int {
 	req := protocol.GetReqIndex()
 	log.Println(" recv web cmd startzone", host, " zid:", zid, "req:", req)
-	c := gserver.clients[host]
+	c := (*s).clients[host]
 	if c == nil {
 		log.Println(" cannt find host:", host)
 		return protocol.NotifyDoFail
@@ -67,16 +77,15 @@ func StartZone(host string, zid int) int {
 		log.Println(host + "  startzone: " + err.Error())
 		return protocol.NotifyDoFail
 	}
-	s := protocol.C2sNotifyDone{}
-	protocol.WaitCallBack(p.Req, &s)
-	log.Println("start zone aaaaa:", s)
-	return s.Do
+	r := protocol.C2sNotifyDone{}
+	protocol.WaitCallBack(p.Req, &r)
+	return r.Do
 }
 
-func StopZone(host string, zid int) int {
+func (s *Aserver) StopZone(host string, zid int) int {
 	req := protocol.GetReqIndex()
 	log.Println(" recv web cmd stopzone", host, " zid:", zid, "req:", req)
-	c := gserver.clients[host]
+	c := (*s).clients[host]
 	if c == nil {
 		return protocol.NotifyDoFail
 	}
@@ -89,20 +98,36 @@ func StopZone(host string, zid int) int {
 		log.Println(host + "  Stopzone: " + err.Error())
 		return protocol.NotifyDoFail
 	}
-	s := protocol.C2sNotifyDone{}
-	protocol.WaitCallBack(p.Req, &s)
-	return s.Do
+	r := protocol.C2sNotifyDone{}
+	protocol.WaitCallBack(p.Req, &r)
+	return r.Do
 }
 
-func Update(host string) {
-	//log.Println(" recv web cmd update", host)
-	//c := gserver.clients[host]
-	//if c == nil {
-	//	log.Println("cannt find client hostname:", host, gserver.clients)
-	//	return
-	//}
-	//err := c.SendBytesCmd("update")
-	//if err != nil {
-	//	log.Println(host + "  update: " + err.Error())
-	//}
+func (s *Aserver) UpdateZone(host string) int {
+	log.Println(" recv web cmd update", host)
+	req := protocol.GetReqIndex()
+	c := gserver.clients[host]
+	if c == nil {
+		log.Println("cannt find client hostname:", host, gserver.clients)
+		return protocol.NotifyDoFail
+	}
+	p := protocol.S2cNotifyDo{
+		Name: "updateZone",
+		Req:  req,
+	}
+	err := protocol.SendJson(c.conn, protocol.CmdStopZone, p)
+	if err != nil {
+		log.Println(host + "  updatezone: " + err.Error())
+		return protocol.NotifyDoFail
+	}
+	r := protocol.C2sNotifyDone{}
+	protocol.WaitCallBack(p.Req, &r)
+	return r.Do
+}
+
+func (s *Aserver) CheckOnlineMachine(mName string) bool {
+	if _, ok := (*s).clients[mName]; ok {
+		return true
+	}
+	return false
 }

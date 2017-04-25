@@ -21,7 +21,6 @@ import (
 type LogsInfo struct {
 	logdbIP   map[string]string
 	logPhpArg map[string]string
-	StaticIP  string
 }
 
 type LogdbConf struct {
@@ -72,6 +71,7 @@ func RegCmd() {
 	msgMap[protocol.CmdToken] = CheckRsp
 	msgMap[protocol.CmdStartZone] = StartZone
 	msgMap[protocol.CmdStopZone] = StopZone
+	msgMap[protocol.CmdUpdateHost] = UpdateZoneConfig
 }
 
 func ExecPhpForLogdb() {
@@ -197,7 +197,6 @@ func CheckRsp(data []byte) {
 		log.Println("CheckRsp, uncode error:", string(data), err.Error())
 		return
 	}
-	logConfs.StaticIP = p.StaticIp
 	_, exeErr := utils.ExeShellArgs3("expect", "./synGameConf_expt", connectIP, gConfDir, localDir)
 	if exeErr != nil {
 		log.Println("Update cannt work!, reason:", exeErr.Error())
@@ -312,13 +311,26 @@ func StopZone(data []byte) {
 	protocol.SendJson(gConn, protocol.CmdStopZone, r)
 }
 
-func GetSeviceStarted(data []byte) {
-	zone := string(data)
-	p := protocol.C2sServiceStartStatus{
-		Name:    zone,
-		Started: agentServices[zone].Started,
+func UpdateZoneConfig(data []byte) {
+	p := protocol.S2cNotifyDo{}
+	err := json.Unmarshal(data, &p)
+	if err != nil {
+		log.Println(" Stop Zone uncode json err, zone:", err.Error())
+		return
 	}
-	protocol.SendJson(gConn, protocol.CmdServiceStarted, p)
+	r := protocol.C2sNotifyDone{
+		Req: p.Req,
+		Do:  protocol.NotifyDoFail,
+	}
+	log.Println("update zoneConfig, Name:", p.Name, "req:", p.Req)
+	_, exeErr := utils.ExeShellArgs3("expect", "./synGameConf_expt", connectIP, gConfDir, localDir)
+	if exeErr != nil {
+		log.Println("Update cannt work!, reason:", exeErr.Error())
+		r.Do = protocol.NotifyDoFail
+	} else {
+		r.Do = protocol.NotifyDoSuc
+	}
+	protocol.SendJson(gConn, protocol.CmdUpdateHost, r)
 }
 
 //func Ping() {
