@@ -29,8 +29,8 @@ type LogdbConf struct {
 
 type ServiceInfo struct {
 	Sname     string
-	Started   bool
-	Gof       bool
+	Started   bool //游戏区服是否已启动
+	Gof       bool //是否开启定时检查进程功能
 	Operating bool
 	Tservice  int
 }
@@ -73,7 +73,7 @@ func RegCmd() {
 	os.Mkdir(localDir, os.ModePerm)
 	msgMap = make(map[uint32]func([]byte))
 	msgMap[protocol.CmdToken] = CheckRsp
-	msgMap[protocol.CmdStartZone] = StartZone
+	msgMap[protocol.CmdStartZone] = C2sStartZone
 	msgMap[protocol.CmdStopZone] = StopZone
 	msgMap[protocol.CmdUpdateHost] = UpdateZoneConfig
 }
@@ -265,25 +265,7 @@ func InitServiceStatus(name string) {
 	}
 }
 
-func StartZone(data []byte) {
-	p := protocol.S2cNotifyDo{}
-	err := json.Unmarshal(data, &p)
-	if err != nil {
-		log.Println(" StartZone uncode json err, zone:", err.Error())
-		return
-	}
-	zone := p.Name
-	r := protocol.C2sNotifyDone{
-		Req: p.Req,
-		Do:  protocol.NotifyDoFail,
-	}
-
-	if agentServices[zone].Operating {
-		r.Do = protocol.NotifyDoing
-		protocol.SendJson(gConn, protocol.CmdStartZone, r)
-		return
-	}
-	agentServices[zone].Operating = true
+func StartZone(zone string) int {
 	t := agentServices[zone].Tservice
 	log.Println("recv start zone, zone:", zone)
 	s := CheckProcess(t, zone)
@@ -297,16 +279,17 @@ func StartZone(data []byte) {
 			time.Sleep(time.Second * 5)
 		}
 	}
+	ret := protocol.NotifyDoFail
 	agentServices[zone].Started = s
 	if s == true {
-		r.Do = protocol.NotifyDoSuc
 		if agentServices[zone].Gof == false {
 			go CheckProcessStatus("checkZoneProcess", zone)
 			agentServices[zone].Gof = true
 		}
+		ret = protocol.NotifyDoSuc
 	}
 	agentServices[zone].Operating = false
-	protocol.SendJson(gConn, protocol.CmdStartZone, r)
+	return ret
 }
 
 func StopZone(data []byte) {
@@ -356,10 +339,25 @@ func UpdateZoneConfig(data []byte) {
 	protocol.SendJson(gConn, protocol.CmdUpdateHost, r)
 }
 
-//func Ping() {
-//	for {
-//		log.Println("send ping ...")
-//		protocol.Send(gConn, protocol.CmdUpdateHost, "ok")
-//		time.Sleep(10 * time.Millisecond)
-//	}
-//}
+func C2sStartZone(data []byte) {
+	p := protocol.S2cNotifyDo{}
+	err := json.Unmarshal(data, &p)
+	if err != nil {
+		log.Println(" StartZone uncode json err, zone:", err.Error())
+		return
+	}
+	zone := p.Name
+	r := protocol.C2sNotifyDone{
+		Req: p.Req,
+		Do:  protocol.NotifyDoFail,
+	}
+
+	if agentServices[zone].Operating {
+		r.Do = protocol.NotifyDoing
+		protocol.SendJson(gConn, protocol.CmdStartZone, r)
+		return
+	}
+	agentServices[zone].Operating = true
+	r.Do = StartZone(zone)
+	protocol.SendJson(gConn, protocol.CmdStartZone, r)
+}
