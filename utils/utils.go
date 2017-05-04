@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -141,4 +142,22 @@ func ExeShellArgs3(syscmd string, dir string, arg1 string, arg2 string, arg3 str
 	}
 	s := strings.Replace(string(opBytes), "\n", "", -1)
 	return s, nil
+}
+
+func MatchType(a string, f string) bool {
+	reg := regexp.MustCompile(f)
+	s := reg.FindAllString(a, -1)
+	if len(s) > 0 {
+		return true
+	}
+	return false
+}
+
+func AgentServiceType(agentName string, tmap map[int]string) int {
+	for k, v := range tmap {
+		if MatchType(agentName, v) {
+			return k
+		}
+	}
+	return 0
 }

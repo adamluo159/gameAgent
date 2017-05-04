@@ -6,16 +6,12 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"log"
+	"regexp"
 	"time"
 
 	"errors"
 	"fmt"
 	"net"
-)
-
-var (
-	gReqIndex    int                      = 1 //同步消息序号
-	indexChanMap map[int]chan interface{} = make(map[int]chan interface{})
 )
 
 const (
@@ -25,24 +21,37 @@ const (
 	NotifyDoFail int = 1
 	NotifyDoSuc  int = 2
 	NotifyDoing  int = 3
+
+	Tzone      int = 1
+	TzoneDB    int = 2
+	TzonelogDB int = 3
+
+	Regzone      string = "^zone[0-9]*[1-9][0-9]*$"
+	RegzoneDB    string = "^zonedb[0-9]*[1-9][0-9]*$"
+	RegzonelogDB string = "^zonelogdb[0-9]*[1-9][0-9]*$"
+)
+
+var (
+	gReqIndex    int                      = 1 //同步消息序号
+	indexChanMap map[int]chan interface{} = make(map[int]chan interface{})
+	TserviceReg                           = map[int]string{
+		Tzone: Regzone,
+	}
 )
 
 const (
-	CmdNone           uint32 = 0
-	CmdToken          uint32 = 1 //token验证
-	CmdStartZone      uint32 = 2 //区服启动
-	CmdStopZone       uint32 = 3 //区服停
-	CmdServiceStarted uint32 = 4 //获取服务是否启动
-	CmdUpdateHost     uint32 = 5 //机器配置更新
+	CmdNone          uint32 = 0
+	CmdToken         uint32 = 1 //token验证
+	CmdStartZone     uint32 = 2 //区服启动
+	CmdStopZone      uint32 = 3 //区服停
+	CmdStartHostZone uint32 = 4 //启动该机器上的所有区服
+	CmdUpdateHost    uint32 = 5 //机器配置更新
 )
 
 type C2sToken struct {
-	Token string
-	Host  string
-}
-
-type S2cToken struct {
-	Applications []string
+	Token    string
+	Host     string
+	Mservice map[string]bool
 }
 
 type S2cNotifyDo struct {
@@ -73,11 +82,12 @@ func NotifyWait(req int, v interface{}) {
 		delete(indexChanMap, req)
 	}
 }
-func WaitCallBack(req int, reply interface{}) error {
+
+func WaitCallBack(req int, reply interface{}, waitSec time.Duration) error {
 	log.Println("wait call back msg, req:", req, indexChanMap)
 	ch := make(chan interface{})
 	indexChanMap[req] = ch
-	t := time.NewTimer(time.Second * 30)
+	t := time.NewTimer(time.Second * waitSec)
 	select {
 	case r := <-ch:
 		DeepCopy(reply, r)
@@ -160,4 +170,14 @@ func SendJson(conn *net.Conn, cmd uint32, v interface{}) error {
 	}
 	log.Println("send msg:", cmd, len(jsonBytes), string(jsonBytes))
 	return nil
+}
+
+func MatchType(a string, f string) bool {
+	reg := regexp.MustCompile(f)
+	s := reg.FindAllString(a, -1)
+	if len(s) > 0 {
+
+		return true
+	}
+	return false
 }

@@ -11,9 +11,28 @@ import (
 
 func (c *Client) RegCmd() *map[uint32]func(data []byte) {
 	return &map[uint32]func(data []byte){
-		protocol.CmdToken:     c.TokenCheck,
-		protocol.CmdStartZone: c.CallBackHandle,
-		protocol.CmdStopZone:  c.CallBackHandle,
+		protocol.CmdToken:      c.TokenCheck,
+		protocol.CmdStartZone:  c.CallBackHandle,
+		protocol.CmdStopZone:   c.CallBackHandle,
+		protocol.CmdUpdateHost: c.CallBackHandle,
+	}
+}
+
+//暂定agent发来的service全是zone级的
+func (c *Client) typeMachine(apps []string, ms map[string]bool) {
+	c.zoneServiceMap = make(map[string]bool)
+	for index := 0; index < len(apps); index++ {
+		s := apps[index]
+		t := utils.AgentServiceType(s, protocol.TserviceReg)
+		if t != protocol.Tzone {
+			continue
+		}
+		started, ok := ms[s]
+		if !ok {
+			log.Println("use apps cannt find in ms ", s)
+			continue
+		}
+		c.zoneServiceMap[s] = started
 	}
 }
 
@@ -71,6 +90,7 @@ func (c *Client) TokenCheck(data []byte) {
 		return
 	}
 	c.host = p.Host
+	c.curSerivceDo = make(map[int]bool)
 	gserver.clients[p.Host] = c
 
 	m := gserver.mhMgr.GetMachineByName(p.Host)
@@ -78,15 +98,14 @@ func (c *Client) TokenCheck(data []byte) {
 		log.Println("TokenCheck cant find machine, host:", p.Host)
 		return
 	}
-	sm := gserver.mhMgr.GetMachineByName("master")
-	if sm == nil {
-		log.Println("TokenCheck cant find staticIp machine, host:", "master")
-		return
-	}
-	r := protocol.S2cToken{
-		Applications: m.Applications,
-	}
-	protocol.SendJson(c.conn, protocol.CmdToken, r)
+	//sm := gserver.mhMgr.GetMachineByName("master")
+	//if sm == nil {
+	//	log.Println("TokenCheck cant find staticIp machine, host:", "master")
+	//	return
+	//}
+	log.Println(m.Applications, p.Mservice)
+	c.typeMachine(m.Applications, p.Mservice)
+	protocol.Send(c.conn, protocol.CmdToken, "OK")
 }
 
 func (c *Client) CallBackHandle(data []byte) {
@@ -97,4 +116,17 @@ func (c *Client) CallBackHandle(data []byte) {
 		return
 	}
 	protocol.NotifyWait(r.Req, r)
+}
+
+func (c *Client) HostNotifyDo(cmd uint32, servicesT int) {
+	req := protocol.GetReqIndex()
+	p := protocol.S2cNotifyDo{
+		Req: req,
+	}
+	protocol.SendJson(c.conn, cmd, p)
+	r := protocol.C2sNotifyDone{}
+	protocol.WaitCallBack(p.Req, &r, 60*2)
+	if r.Do == protocol.NotifyDoSuc {
+		c.curSerivceDo[servicesT] = true
+	}
 }

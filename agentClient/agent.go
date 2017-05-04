@@ -2,6 +2,7 @@ package agentClient
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -11,8 +12,6 @@ import (
 	"time"
 
 	"encoding/json"
-
-	"fmt"
 
 	"github.com/adamluo159/gameAgent/protocol"
 	"github.com/adamluo159/gameAgent/utils"
@@ -33,6 +32,7 @@ type ServiceInfo struct {
 	Started   bool
 	Gof       bool
 	Operating bool
+	Tservice  int
 }
 
 var (
@@ -48,6 +48,10 @@ var (
 	cgServerFile  string
 	phpTemplate   string = "logdb=%s&logdir=%s&method=%s&sdb=%s"
 	logConfs      LogsInfo
+
+	CheckProcessName = map[int]string{
+		protocol.Tzone: "checkZoneProcess",
+	}
 )
 
 func RegCmd() {
@@ -90,7 +94,7 @@ func CheckProcessStatus(checkShellName string, dstName string) {
 			s.Gof = false
 			break
 		}
-		if CheckProcess(checkShellName, dstName) == false {
+		if CheckProcess(s.Tservice, dstName) == false {
 			log.Println("check process error ", dstName)
 		}
 		time.Sleep(time.Minute * 30)
@@ -98,7 +102,13 @@ func CheckProcessStatus(checkShellName string, dstName string) {
 }
 
 //检查进程是否存在
-func CheckProcess(checkShellName string, dstName string) bool {
+func CheckProcess(tservice int, dstName string) bool {
+	checkShellName, ok := CheckProcessName[tservice]
+	if !ok {
+		log.Println("checkprocess cannt get type shellName", dstName, tservice)
+		return false
+	}
+
 	check := cgProductDir + "/agent/" + checkShellName
 	ret, _ := utils.ExeShell("sh", check, dstName)
 	s := strings.Replace(string(ret), " ", "", -1)
@@ -180,10 +190,22 @@ func Conn(addr string) {
 }
 
 func CheckReq() {
-	p := protocol.C2sToken{}
+	p := protocol.C2sToken{
+		Mservice: make(map[string]bool),
+	}
 	host, hostErr := os.Hostname()
 	if hostErr != nil {
 		log.Println(":checkReq:", hostErr.Error())
+	}
+
+	_, exeErr := utils.ExeShellArgs3("expect", "./synGameConf_expt", connectIP, gConfDir, localDir)
+	if exeErr != nil {
+		log.Println("Update cannt work!, reason:", exeErr.Error())
+	}
+	LoadLogFile()
+
+	for k, v := range agentServices {
+		p.Mservice[k] = v.Started
 	}
 	p.Host = host
 	p.Token = utils.CreateMd5("cgyx2017")
@@ -191,17 +213,16 @@ func CheckReq() {
 }
 
 func CheckRsp(data []byte) {
-	p := protocol.S2cToken{}
-	err := json.Unmarshal(data, &p)
-	if err != nil {
-		log.Println("CheckRsp, uncode error:", string(data), err.Error())
-		return
+	r := string(data)
+	if r != "OK" {
+		log.Fatal("register agentserver callback not ok")
 	}
-	_, exeErr := utils.ExeShellArgs3("expect", "./synGameConf_expt", connectIP, gConfDir, localDir)
-	if exeErr != nil {
-		log.Println("Update cannt work!, reason:", exeErr.Error())
-	}
-	LoadLogFile()
+	//p := protocol.S2cToken{}
+	//err := json.Unmarshal(data, &p)
+	//if err != nil {
+	//	log.Println("CheckRsp, uncode error:", string(data), err.Error())
+	//	return
+	//}
 }
 
 func LoadLogFile() {
@@ -227,15 +248,16 @@ func LoadLogFile() {
 		log.Println("LoadLogFile, logs:, ", db.DirName, logConfs.logPhpArg[db.DirName])
 		InitServiceStatus(serviceName)
 	}
-	//utils.SetTimerPerHour(ExecPhpForLogdb)
-	//go ExecPhpForLogdb()
 }
 
 //目前只有zone级服务初始化,后面添加登陆、充值等
 func InitServiceStatus(name string) {
 	agentServices[name] = &ServiceInfo{}
-	agentServices[name].Started = CheckProcess("checkZoneProcess", name)
+	t := utils.AgentServiceType(name, protocol.TserviceReg)
+	agentServices[name].Tservice = t
+	agentServices[name].Started = CheckProcess(t, name)
 	agentServices[name].Gof = false
+	agentServices[name].Sname = name
 
 	if agentServices[name].Started {
 		go CheckProcessStatus("checkZoneProcess", name)
@@ -262,15 +284,16 @@ func StartZone(data []byte) {
 		return
 	}
 	agentServices[zone].Operating = true
+	t := agentServices[zone].Tservice
 	log.Println("recv start zone, zone:", zone)
-	s := CheckProcess("checkZoneProcess", zone)
+	s := CheckProcess(t, zone)
 	if s == false {
 		utils.ExeShellArgs3("sh", cgServerFile, "start", zone, "")
 		for index := 0; index < 6; index++ {
 			if s {
 				break
 			}
-			s = CheckProcess("checkZoneProcess", zone)
+			s = CheckProcess(t, zone)
 			time.Sleep(time.Second * 5)
 		}
 	}

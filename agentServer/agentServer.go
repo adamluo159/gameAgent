@@ -5,21 +5,28 @@ import (
 	"net"
 	"strconv"
 
+	"time"
+
 	"github.com/adamluo159/admin-react/server/comInterface"
 	"github.com/adamluo159/gameAgent/protocol"
+	"github.com/adamluo159/gameAgent/utils"
 )
 
 // Client holds info about connection
 type Client struct {
-	conn *net.Conn
-	host string
+	conn           *net.Conn
+	host           string
+	curSerivceDo   map[int]bool
+	zoneServiceMap map[string]bool
 }
 
 // TCP server
 type Aserver struct {
-	clients map[string]*Client
-	address string // Address to open connection: localhost:9999
-	mhMgr   comInterface.MachineMgr
+	clients             map[string]*Client
+	address             string // Address to open connection: localhost:9999
+	mhMgr               comInterface.MachineMgr
+	zoneDBServiceMap    map[string][]string
+	zonelogDBserviceMap map[string][]string
 }
 
 var gserver *Aserver
@@ -46,14 +53,35 @@ func (s *Aserver) Listen() {
 func New(address string) *Aserver {
 	log.Println("Creating server with address", address)
 	gserver = &Aserver{
-		address: address,
-		clients: make(map[string]*Client),
+		address:             address,
+		clients:             make(map[string]*Client),
+		zoneDBServiceMap:    make(map[string][]string),
+		zonelogDBserviceMap: make(map[string][]string),
 	}
 	return gserver
 }
 
 func (s *Aserver) Init(m comInterface.MachineMgr) {
 	s.mhMgr = m
+	allMs := m.GetAllMachines()
+	for _, v := range allMs {
+		s.UpdataDBFromMachine(v.Hostname, v.Applications)
+	}
+}
+
+func (s *Aserver) UpdataDBFromMachine(host string, apps []string) {
+	gserver.zoneDBServiceMap[host] = make([]string, 0)
+	gserver.zonelogDBserviceMap[host] = make([]string, 0)
+
+	for index := 0; index < len(apps); index++ {
+		s := apps[index]
+		t := utils.AgentServiceType(s, protocol.TserviceReg)
+		if t == protocol.TzoneDB {
+			gserver.zoneDBServiceMap[host] = append(gserver.zoneDBServiceMap[host], s)
+		} else if t == protocol.TzonelogDB {
+			gserver.zonelogDBserviceMap[host] = append(gserver.zonelogDBserviceMap[host], s)
+		}
+	}
 }
 
 func (s *Aserver) ClientDisconnect(host string) {
@@ -78,7 +106,7 @@ func (s *Aserver) StartZone(host string, zid int) int {
 		return protocol.NotifyDoFail
 	}
 	r := protocol.C2sNotifyDone{}
-	protocol.WaitCallBack(p.Req, &r)
+	protocol.WaitCallBack(p.Req, &r, 30)
 	return r.Do
 }
 
@@ -99,7 +127,7 @@ func (s *Aserver) StopZone(host string, zid int) int {
 		return protocol.NotifyDoFail
 	}
 	r := protocol.C2sNotifyDone{}
-	protocol.WaitCallBack(p.Req, &r)
+	protocol.WaitCallBack(p.Req, &r, 30)
 	return r.Do
 }
 
@@ -115,14 +143,39 @@ func (s *Aserver) UpdateZone(host string) int {
 		Name: "updateZone",
 		Req:  req,
 	}
-	err := protocol.SendJson(c.conn, protocol.CmdStopZone, p)
+	err := protocol.SendJson(c.conn, protocol.CmdUpdateHost, p)
 	if err != nil {
 		log.Println(host + "  updatezone: " + err.Error())
 		return protocol.NotifyDoFail
 	}
 	r := protocol.C2sNotifyDone{}
-	protocol.WaitCallBack(p.Req, &r)
+	protocol.WaitCallBack(p.Req, &r, 30)
 	return r.Do
+}
+
+func (s *Aserver) StartAllZone() bool {
+	for _, v := range s.clients {
+		go v.HostNotifyDo(protocol.CmdStartHostZone, protocol.Tzone)
+	}
+	suc := false
+	for index := 0; index < 30; index++ {
+		for _, v := range s.clients {
+			if v.curSerivceDo[protocol.Tzone] == false {
+				break
+			}
+			suc = true
+		}
+		time.Sleep(time.Second * 10)
+	}
+	return suc
+}
+
+func (s *Aserver) OnlineZones() map[string]*map[string]bool {
+	onlinezs := make(map[string]*map[string]bool)
+	for _, v := range s.clients {
+		onlinezs[v.host] = &v.zoneServiceMap
+	}
+	return onlinezs
 }
 
 func (s *Aserver) CheckOnlineMachine(mName string) bool {
