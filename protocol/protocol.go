@@ -46,6 +46,7 @@ const (
 	CmdStopZone      uint32 = 3 //区服停
 	CmdStartHostZone uint32 = 4 //启动该机器上的所有区服
 	CmdUpdateHost    uint32 = 5 //机器配置更新
+	CmdStopHostZone  uint32 = 6 //关闭该机器上所有区服
 )
 
 type C2sToken struct {

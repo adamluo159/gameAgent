@@ -27,6 +27,7 @@ type Aserver struct {
 	mhMgr               comInterface.MachineMgr
 	zoneDBServiceMap    map[string][]string
 	zonelogDBserviceMap map[string][]string
+	allOperating        bool
 }
 
 var gserver *Aserver
@@ -153,21 +154,43 @@ func (s *Aserver) UpdateZone(host string) int {
 	return r.Do
 }
 
-func (s *Aserver) StartAllZone() bool {
+func (s *Aserver) OperateAllZone(op uint32) int {
 	for _, v := range s.clients {
-		go v.HostNotifyDo(protocol.CmdStartHostZone, protocol.Tzone)
+		v.curSerivceDo[protocol.Tzone] = false
+		go v.HostNotifyDo(op, protocol.Tzone)
 	}
-	suc := false
+	suc := protocol.NotifyDoFail
 	for index := 0; index < 30; index++ {
+		suc = protocol.NotifyDoSuc
 		for _, v := range s.clients {
 			if v.curSerivceDo[protocol.Tzone] == false {
+				suc = protocol.NotifyDoFail
 				break
 			}
-			suc = true
 		}
 		time.Sleep(time.Second * 10)
 	}
 	return suc
+}
+
+func (s *Aserver) StartAllZone() int {
+	if s.allOperating {
+		return protocol.NotifyDoing
+	}
+	s.allOperating = true
+	ret := s.OperateAllZone(protocol.CmdStartHostZone)
+	s.allOperating = false
+	return ret
+}
+
+func (s *Aserver) StopAllZone() int {
+	if s.allOperating {
+		return protocol.NotifyDoing
+	}
+	s.allOperating = true
+	ret := s.OperateAllZone(protocol.CmdStopHostZone)
+	s.allOperating = false
+	return ret
 }
 
 func (s *Aserver) OnlineZones() map[string]*map[string]bool {

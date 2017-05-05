@@ -72,10 +72,12 @@ func RegCmd() {
 
 	os.Mkdir(localDir, os.ModePerm)
 	msgMap = make(map[uint32]func([]byte))
-	msgMap[protocol.CmdToken] = CheckRsp
+	msgMap[protocol.CmdToken] = C2sCheckRsp
 	msgMap[protocol.CmdStartZone] = C2sStartZone
-	msgMap[protocol.CmdStopZone] = StopZone
+	msgMap[protocol.CmdStopZone] = C2sStopZone
 	msgMap[protocol.CmdUpdateHost] = UpdateZoneConfig
+	msgMap[protocol.CmdStartHostZone] = C2sStartHostZones
+	msgMap[protocol.CmdStopHostZone] = C2sStopHostZones
 }
 
 func ExecPhpForLogdb() {
@@ -212,7 +214,7 @@ func CheckReq() {
 	protocol.SendJson(gConn, protocol.CmdToken, &p)
 }
 
-func CheckRsp(data []byte) {
+func C2sCheckRsp(data []byte) {
 	r := string(data)
 	if r != "OK" {
 		log.Fatal("register agentserver callback not ok")
@@ -292,29 +294,8 @@ func StartZone(zone string) int {
 	return ret
 }
 
-func StopZone(data []byte) {
-	p := protocol.S2cNotifyDo{}
-	err := json.Unmarshal(data, &p)
-	if err != nil {
-		log.Println(" Stop Zone uncode json err, zone:", err.Error())
-		return
-	}
-	zone := p.Name
-	r := protocol.C2sNotifyDone{
-		Req: p.Req,
-		Do:  protocol.NotifyDoFail,
-	}
-	log.Println("recv stop msg, Name:", zone, "req:", p.Req)
-	if agentServices[zone].Operating {
-		r.Do = protocol.NotifyDoing
-		protocol.SendJson(gConn, protocol.CmdStopZone, r)
-		return
-	}
-	agentServices[zone].Operating = true
+func StopZone(zone string) {
 	utils.ExeShellArgs2("sh", cgServerFile, "stop", zone)
-	agentServices[zone].Operating = false
-	r.Do = protocol.NotifyDoSuc
-	protocol.SendJson(gConn, protocol.CmdStopZone, r)
 }
 
 func UpdateZoneConfig(data []byte) {
@@ -359,5 +340,77 @@ func C2sStartZone(data []byte) {
 	}
 	agentServices[zone].Operating = true
 	r.Do = StartZone(zone)
+	agentServices[zone].Operating = false
 	protocol.SendJson(gConn, protocol.CmdStartZone, r)
+}
+
+func C2sStopZone(data []byte) {
+	p := protocol.S2cNotifyDo{}
+	err := json.Unmarshal(data, &p)
+	if err != nil {
+		log.Println(" Stop Zone uncode json err, zone:", err.Error())
+		return
+	}
+	zone := p.Name
+	r := protocol.C2sNotifyDone{
+		Req: p.Req,
+		Do:  protocol.NotifyDoFail,
+	}
+	log.Println("recv stop msg, Name:", zone, "req:", p.Req)
+	if agentServices[zone].Operating {
+		r.Do = protocol.NotifyDoing
+		protocol.SendJson(gConn, protocol.CmdStopZone, r)
+		return
+	}
+	agentServices[zone].Operating = true
+	StopZone(zone)
+	agentServices[zone].Operating = false
+	r.Do = protocol.NotifyDoSuc
+	protocol.SendJson(gConn, protocol.CmdStopZone, r)
+}
+
+func C2sStartHostZones(data []byte) {
+	p := protocol.S2cNotifyDo{}
+	err := json.Unmarshal(data, &p)
+	if err != nil {
+		log.Println(" Start hostZones uncode json err, zone:", err.Error())
+		return
+	}
+	r := protocol.C2sNotifyDone{
+		Req: p.Req,
+		Do:  protocol.NotifyDoFail,
+	}
+	for k := range agentServices {
+		z := agentServices[k]
+		if z.Started {
+			continue
+		}
+		ret := StartZone(z.Sname)
+		if ret != protocol.NotifyDoSuc {
+			r.Do = ret
+		}
+	}
+	protocol.SendJson(gConn, protocol.CmdStartHostZone, r)
+}
+
+func C2sStopHostZones(data []byte) {
+	p := protocol.S2cNotifyDo{}
+	err := json.Unmarshal(data, &p)
+	if err != nil {
+		log.Println(" Stop hostZones uncode json err, zone:", err.Error())
+		return
+	}
+	r := protocol.C2sNotifyDone{
+		Req: p.Req,
+		Do:  protocol.NotifyDoSuc,
+	}
+	for k := range agentServices {
+		z := agentServices[k]
+		if z.Started {
+			continue
+		}
+		StopZone(z.Sname)
+	}
+	protocol.SendJson(gConn, protocol.CmdStartHostZone, r)
+
 }
