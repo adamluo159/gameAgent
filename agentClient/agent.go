@@ -294,8 +294,27 @@ func StartZone(zone string) int {
 	return ret
 }
 
-func StopZone(zone string) {
+func StopZone(zone string) int {
+	log.Println("recv start zone, zone:", zone)
+	t := agentServices[zone].Tservice
+
+	s := CheckProcess(t, zone)
+	if s == false {
+		agentServices[zone].Started = false
+		agentServices[zone].Gof = false
+
+		return protocol.NotifyDoSuc
+	}
 	utils.ExeShellArgs2("sh", cgServerFile, "stop", zone)
+	s = CheckProcess(t, zone)
+	if s {
+		return protocol.NotifyDoFail
+	}
+
+	agentServices[zone].Started = false
+	agentServices[zone].Gof = false
+
+	return protocol.NotifyDoSuc
 }
 
 func UpdateZoneConfig(data []byte) {
@@ -363,9 +382,8 @@ func C2sStopZone(data []byte) {
 		return
 	}
 	agentServices[zone].Operating = true
-	StopZone(zone)
+	r.Do = StopZone(zone)
 	agentServices[zone].Operating = false
-	r.Do = protocol.NotifyDoSuc
 	protocol.SendJson(gConn, protocol.CmdStopZone, r)
 }
 
@@ -378,13 +396,11 @@ func C2sStartHostZones(data []byte) {
 	}
 	r := protocol.C2sNotifyDone{
 		Req: p.Req,
-		Do:  protocol.NotifyDoFail,
+		Do:  protocol.NotifyDoSuc,
 	}
+
 	for k := range agentServices {
 		z := agentServices[k]
-		if z.Started {
-			continue
-		}
 		ret := StartZone(z.Sname)
 		if ret != protocol.NotifyDoSuc {
 			r.Do = ret
@@ -404,13 +420,15 @@ func C2sStopHostZones(data []byte) {
 		Req: p.Req,
 		Do:  protocol.NotifyDoSuc,
 	}
+	log.Println("aaaa:", agentServices)
 	for k := range agentServices {
 		z := agentServices[k]
-		if z.Started {
-			continue
+		ret := StopZone(z.Sname)
+		if ret != protocol.NotifyDoSuc {
+			r.Do = ret
 		}
-		StopZone(z.Sname)
+
 	}
-	protocol.SendJson(gConn, protocol.CmdStartHostZone, r)
+	protocol.SendJson(gConn, protocol.CmdStopHostZone, r)
 
 }
