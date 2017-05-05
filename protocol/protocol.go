@@ -47,6 +47,7 @@ const (
 	CmdStartHostZone uint32 = 4 //启动该机器上的所有区服
 	CmdUpdateHost    uint32 = 5 //机器配置更新
 	CmdStopHostZone  uint32 = 6 //关闭该机器上所有区服
+	CmdZoneState     uint32 = 7 //区服状态(true:开启，false:关闭)
 )
 
 type C2sToken struct {
@@ -62,6 +63,10 @@ type S2cNotifyDo struct {
 type C2sNotifyDone struct {
 	Req int
 	Do  int
+}
+type C2sZoneState struct {
+	Zone string
+	Open bool
 }
 
 func GetReqIndex() int {

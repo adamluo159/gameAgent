@@ -16,7 +16,7 @@ import (
 type Client struct {
 	conn           *net.Conn
 	host           string
-	curSerivceDo   map[int]bool
+	curSerivceDo   map[int]int
 	zoneServiceMap map[string]bool
 }
 
@@ -156,17 +156,26 @@ func (s *Aserver) UpdateZone(host string) int {
 
 func (s *Aserver) OperateAllZone(op uint32) int {
 	for _, v := range s.clients {
-		v.curSerivceDo[protocol.Tzone] = false
+		v.curSerivceDo[protocol.Tzone] = protocol.NotifyDoing
 		go v.HostNotifyDo(op, protocol.Tzone)
 	}
 	suc := protocol.NotifyDoFail
 	for index := 0; index < 30; index++ {
+		done := true
 		suc = protocol.NotifyDoSuc
 		for _, v := range s.clients {
-			if v.curSerivceDo[protocol.Tzone] == false {
-				suc = protocol.NotifyDoFail
+			ret := v.curSerivceDo[protocol.Tzone]
+			if ret == protocol.NotifyDoing {
+				done = false
 				break
 			}
+			if ret == protocol.NotifyDoFail {
+				suc = ret
+			}
+			log.Println("check cb:", v.host, v.curSerivceDo, suc)
+		}
+		if done {
+			break
 		}
 		time.Sleep(time.Second * 10)
 	}

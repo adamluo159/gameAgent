@@ -11,10 +11,12 @@ import (
 
 func (c *Client) RegCmd() *map[uint32]func(data []byte) {
 	return &map[uint32]func(data []byte){
-		protocol.CmdToken:      c.TokenCheck,
-		protocol.CmdStartZone:  c.CallBackHandle,
-		protocol.CmdStopZone:   c.CallBackHandle,
-		protocol.CmdUpdateHost: c.CallBackHandle,
+		protocol.CmdToken:         c.TokenCheck,
+		protocol.CmdStartZone:     c.CallBackHandle,
+		protocol.CmdStopZone:      c.CallBackHandle,
+		protocol.CmdUpdateHost:    c.CallBackHandle,
+		protocol.CmdStartHostZone: c.CallBackHandle,
+		protocol.CmdStopHostZone:  c.CallBackHandle,
 	}
 }
 
@@ -90,7 +92,7 @@ func (c *Client) TokenCheck(data []byte) {
 		return
 	}
 	c.host = p.Host
-	c.curSerivceDo = make(map[int]bool)
+	c.curSerivceDo = make(map[int]int)
 	gserver.clients[p.Host] = c
 
 	m := gserver.mhMgr.GetMachineByName(p.Host)
@@ -126,7 +128,19 @@ func (c *Client) HostNotifyDo(cmd uint32, servicesT int) {
 	protocol.SendJson(c.conn, cmd, p)
 	r := protocol.C2sNotifyDone{}
 	protocol.WaitCallBack(p.Req, &r, 60*2)
-	if r.Do == protocol.NotifyDoSuc {
-		c.curSerivceDo[servicesT] = true
+	log.Println("recv host cb :", r, c.curSerivceDo[servicesT])
+	c.curSerivceDo[servicesT] = r.Do
+	//if r.Do == protocol.NotifyDoFail {
+	//	c.zoneServiceMap[c] = false
+	//}
+}
+
+func (c *Client) ZoneState(data []byte) {
+	p := protocol.C2sZoneState{}
+	err := json.Unmarshal(data, &p)
+	if err != nil {
+		log.Println("ZoneState, uncode error: ", string(data))
+		return
 	}
+	c.zoneServiceMap[p.Zone] = p.Open
 }

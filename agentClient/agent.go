@@ -290,6 +290,7 @@ func StartZone(zone string) int {
 		}
 		ret = protocol.NotifyDoSuc
 	}
+	C2sZoneState(zone)
 	agentServices[zone].Operating = false
 	return ret
 }
@@ -313,7 +314,7 @@ func StopZone(zone string) int {
 
 	agentServices[zone].Started = false
 	agentServices[zone].Gof = false
-
+	C2sZoneState(zone)
 	return protocol.NotifyDoSuc
 }
 
@@ -430,5 +431,15 @@ func C2sStopHostZones(data []byte) {
 
 	}
 	protocol.SendJson(gConn, protocol.CmdStopHostZone, r)
+}
 
+func C2sZoneState(zone string) {
+	p := protocol.C2sZoneState{
+		Zone: zone,
+		Open: agentServices[zone].Started,
+	}
+	err := protocol.SendJson(gConn, protocol.CmdZoneState, p)
+	if err != nil {
+		log.Println("sysn zone state err, ", err.Error())
+	}
 }
