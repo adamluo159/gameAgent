@@ -72,12 +72,12 @@ func RegCmd() {
 
 	os.Mkdir(localDir, os.ModePerm)
 	msgMap = make(map[uint32]func([]byte))
-	msgMap[protocol.CmdToken] = C2sCheckRsp
-	msgMap[protocol.CmdStartZone] = C2sStartZone
-	msgMap[protocol.CmdStopZone] = C2sStopZone
-	msgMap[protocol.CmdUpdateHost] = UpdateZoneConfig
-	msgMap[protocol.CmdStartHostZone] = C2sStartHostZones
-	msgMap[protocol.CmdStopHostZone] = C2sStopHostZones
+	msgMap[protocol.CmdToken] = S2cCheckRsp
+	msgMap[protocol.CmdStartZone] = S2cStartZone
+	msgMap[protocol.CmdStopZone] = S2cStopZone
+	msgMap[protocol.CmdUpdateHost] = S2cUpdateZoneConfig
+	msgMap[protocol.CmdStartHostZone] = S2cStartHostZones
+	msgMap[protocol.CmdStopHostZone] = S2cStopHostZones
 }
 
 func ExecPhpForLogdb() {
@@ -145,7 +145,7 @@ func Conn(addr string) {
 	defer conn.Close()
 
 	gConn = &conn
-	CheckReq()
+	C2sCheckReq()
 
 	//只在内网跑，所有不加ping了
 	//go Ping()
@@ -191,7 +191,7 @@ func Conn(addr string) {
 
 }
 
-func CheckReq() {
+func C2sCheckReq() {
 	p := protocol.C2sToken{
 		Mservice: make(map[string]bool),
 	}
@@ -214,7 +214,7 @@ func CheckReq() {
 	protocol.SendJson(gConn, protocol.CmdToken, &p)
 }
 
-func C2sCheckRsp(data []byte) {
+func S2cCheckRsp(data []byte) {
 	r := string(data)
 	if r != "OK" {
 		log.Fatal("register agentserver callback not ok")
@@ -290,7 +290,7 @@ func StartZone(zone string) int {
 		}
 		ret = protocol.NotifyDoSuc
 	}
-	C2sZoneState(zone)
+	S2cZoneState(zone)
 	agentServices[zone].Operating = false
 	return ret
 }
@@ -314,11 +314,11 @@ func StopZone(zone string) int {
 
 	agentServices[zone].Started = false
 	agentServices[zone].Gof = false
-	C2sZoneState(zone)
+	S2cZoneState(zone)
 	return protocol.NotifyDoSuc
 }
 
-func UpdateZoneConfig(data []byte) {
+func S2cUpdateZoneConfig(data []byte) {
 	p := protocol.S2cNotifyDo{}
 	err := json.Unmarshal(data, &p)
 	if err != nil {
@@ -340,7 +340,7 @@ func UpdateZoneConfig(data []byte) {
 	protocol.SendJson(gConn, protocol.CmdUpdateHost, r)
 }
 
-func C2sStartZone(data []byte) {
+func S2cStartZone(data []byte) {
 	p := protocol.S2cNotifyDo{}
 	err := json.Unmarshal(data, &p)
 	if err != nil {
@@ -364,7 +364,7 @@ func C2sStartZone(data []byte) {
 	protocol.SendJson(gConn, protocol.CmdStartZone, r)
 }
 
-func C2sStopZone(data []byte) {
+func S2cStopZone(data []byte) {
 	p := protocol.S2cNotifyDo{}
 	err := json.Unmarshal(data, &p)
 	if err != nil {
@@ -388,7 +388,7 @@ func C2sStopZone(data []byte) {
 	protocol.SendJson(gConn, protocol.CmdStopZone, r)
 }
 
-func C2sStartHostZones(data []byte) {
+func S2cStartHostZones(data []byte) {
 	p := protocol.S2cNotifyDo{}
 	err := json.Unmarshal(data, &p)
 	if err != nil {
@@ -410,7 +410,7 @@ func C2sStartHostZones(data []byte) {
 	protocol.SendJson(gConn, protocol.CmdStartHostZone, r)
 }
 
-func C2sStopHostZones(data []byte) {
+func S2cStopHostZones(data []byte) {
 	p := protocol.S2cNotifyDo{}
 	err := json.Unmarshal(data, &p)
 	if err != nil {
@@ -433,7 +433,7 @@ func C2sStopHostZones(data []byte) {
 	protocol.SendJson(gConn, protocol.CmdStopHostZone, r)
 }
 
-func C2sZoneState(zone string) {
+func S2cZoneState(zone string) {
 	p := protocol.C2sZoneState{
 		Zone: zone,
 		Open: agentServices[zone].Started,
@@ -442,4 +442,27 @@ func C2sZoneState(zone string) {
 	if err != nil {
 		log.Println("sysn zone state err, ", err.Error())
 	}
+}
+
+func S2cNewZone(data []byte) {
+	p := protocol.S2cNotifyDo{}
+	err := json.Unmarshal(data, &p)
+	if err != nil {
+		log.Println(" Stop Zone uncode json err, zone:", err.Error())
+		return
+	}
+	r := protocol.C2sNotifyDone{
+		Req: p.Req,
+		Do:  protocol.NotifyDoSuc,
+	}
+	log.Println("update zoneConfig, Name:", p.Name, "req:", p.Req)
+	_, exeErr := utils.ExeShellArgs3("expect", "./synGameConf_expt", connectIP, gConfDir, localDir)
+	if exeErr != nil {
+		log.Println("Update cannt work!, reason:", exeErr.Error())
+		r.Do = protocol.NotifyDoFail
+	} else {
+		r.Do = protocol.NotifyDoSuc
+		InitServiceStatus(p.Name)
+	}
+	protocol.SendJson(gConn, protocol.CmdNewZone, r)
 }

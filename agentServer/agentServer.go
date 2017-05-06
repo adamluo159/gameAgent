@@ -199,15 +199,23 @@ func (s *Aserver) StopAllZone() int {
 	s.allOperating = true
 	ret := s.OperateAllZone(protocol.CmdStopHostZone)
 	s.allOperating = false
+
 	return ret
 }
 
-func (s *Aserver) OnlineZones() map[string]*map[string]bool {
-	onlinezs := make(map[string]*map[string]bool)
+func (s *Aserver) OnlineZones() []comInterface.ZoneStates {
+	sz := make([]comInterface.ZoneStates, 0)
 	for _, v := range s.clients {
-		onlinezs[v.host] = &v.zoneServiceMap
+		for k := range v.zoneServiceMap {
+			state := comInterface.ZoneStates{
+				Host:     v.host,
+				Online:   v.zoneServiceMap[k],
+				ZoneName: k,
+			}
+			sz = append(sz, state)
+		}
 	}
-	return onlinezs
+	return sz
 }
 
 func (s *Aserver) CheckOnlineMachine(mName string) bool {
@@ -215,4 +223,25 @@ func (s *Aserver) CheckOnlineMachine(mName string) bool {
 		return true
 	}
 	return false
+}
+
+func (s *Aserver) AddNewZone(host string, zone string) {
+	c := (*s).clients[host]
+	if c == nil {
+		log.Println(" AddNewZone, cannt find host client:", host, zone)
+		return
+	}
+	c.zoneServiceMap[host] = false
+	req := protocol.GetReqIndex()
+	p := protocol.S2cNotifyDo{
+		Name: zone,
+		Req:  req,
+	}
+	err := protocol.SendJson(c.conn, protocol.CmdNewZone, p)
+	if err != nil {
+		log.Println(host + "  Newzone: " + err.Error())
+		return
+	}
+	r := protocol.C2sNotifyDone{}
+	protocol.WaitCallBack(p.Req, &r, 30)
 }

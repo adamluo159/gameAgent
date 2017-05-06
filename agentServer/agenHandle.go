@@ -17,6 +17,8 @@ func (c *Client) RegCmd() *map[uint32]func(data []byte) {
 		protocol.CmdUpdateHost:    c.CallBackHandle,
 		protocol.CmdStartHostZone: c.CallBackHandle,
 		protocol.CmdStopHostZone:  c.CallBackHandle,
+		protocol.CmdNewZone:       c.CallBackHandle,
+		protocol.CmdZoneState:     c.ZoneState,
 	}
 }
 
