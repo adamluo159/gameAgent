@@ -225,16 +225,17 @@ func (s *Aserver) CheckOnlineMachine(mName string) bool {
 	return false
 }
 
-func (s *Aserver) AddNewZone(host string, zone string) {
+func (s *Aserver) AddNewZone(host string, zone string, zid int) {
 	c := (*s).clients[host]
 	if c == nil {
 		log.Println(" AddNewZone, cannt find host client:", host, zone)
 		return
 	}
-	c.zoneServiceMap[host] = false
+	z := "zone" + strconv.Itoa(zid)
+	c.zoneServiceMap[z] = false
 	req := protocol.GetReqIndex()
 	p := protocol.S2cNotifyDo{
-		Name: zone,
+		Name: z,
 		Req:  req,
 	}
 	err := protocol.SendJson(c.conn, protocol.CmdNewZone, p)
