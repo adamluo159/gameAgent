@@ -78,6 +78,7 @@ func RegCmd() {
 	msgMap[protocol.CmdUpdateHost] = S2cUpdateZoneConfig
 	msgMap[protocol.CmdStartHostZone] = S2cStartHostZones
 	msgMap[protocol.CmdStopHostZone] = S2cStopHostZones
+	msgMap[protocol.CmdNewZone] = S2cNewZone
 }
 
 func ExecPhpForLogdb() {
