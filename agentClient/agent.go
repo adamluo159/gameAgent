@@ -251,6 +251,7 @@ func LoadLogFile() {
 		log.Println("LoadLogFile, logs:, ", db.DirName, logConfs.logPhpArg[db.DirName])
 		InitServiceStatus(serviceName)
 	}
+	go ExecPhpForLogdb()
 }
 
 //目前只有zone级服务初始化,后面添加登陆、充值等
