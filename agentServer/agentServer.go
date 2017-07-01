@@ -137,7 +137,7 @@ func (s *Aserver) UpdateZone(host string) int {
 	req := protocol.GetReqIndex()
 	c := gserver.clients[host]
 	if c == nil {
-		log.Println("cannt find client hostname:", host, gserver.clients)
+		log.Println("cannt find client Online,  hostname:", host, gserver.clients)
 		return protocol.NotifyDoFail
 	}
 	p := protocol.S2cNotifyDo{
