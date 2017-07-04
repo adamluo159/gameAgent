@@ -95,6 +95,7 @@ func (c *Client) TokenCheck(data []byte) {
 	}
 	c.host = p.Host
 	c.curSerivceDo = make(map[int]protocol.C2sNotifyDone)
+	c.codeVersion = p.CodeVersion
 	gserver.clients[p.Host] = c
 
 	m := gserver.mhMgr.GetMachineByName(p.Host)
