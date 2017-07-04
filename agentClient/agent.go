@@ -70,7 +70,7 @@ func RegCmd() {
 	cgProductDir = os.Getenv("HOME") + "/product/server/"
 	cgServerFile = cgProductDir + "/cgServer"
 	cgPhp = cgProductDir + "/php/api/api.php"
-	cmdExe := cgProductDir + "agent/svninfo"
+	cmdExe := cgProductDir + "agent/svnInfo"
 
 	var exeErr error
 	codeVersion, exeErr = utils.ExeShell("sh", cmdExe, "")
@@ -506,8 +506,8 @@ func S2cUpdateSvn(data []byte) {
 		} else {
 			r.Do = protocol.NotifyDoSuc
 			r.Result = result
+			codeVersion = r.Result
 		}
 	}
-
 	protocol.SendJson(gConn, protocol.CmdNewZone, r)
 }
