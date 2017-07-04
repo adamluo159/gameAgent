@@ -70,7 +70,7 @@ func RegCmd() {
 	cgProductDir = os.Getenv("HOME") + "/product/server/"
 	cgServerFile = cgProductDir + "/cgServer"
 	cgPhp = cgProductDir + "/php/api/api.php"
-	cmdExe := cgProductDir + "svninfo"
+	cmdExe := cgProductDir + "agent/svninfo"
 
 	var exeErr error
 	codeVersion, exeErr = utils.ExeShell("sh", cmdExe, "")
@@ -492,13 +492,13 @@ func S2cUpdateSvn(data []byte) {
 	}
 	log.Println("update zoneConfig, Name:", p.Name, "req:", p.Req)
 
-	cmdExe := cgProductDir + "/aget/svnUp"
+	cmdExe := cgProductDir + "/agent/svnUp"
 	result, exeErr := utils.ExeShell("sh", cmdExe, "")
 	if exeErr != nil {
 		log.Println("Update cannt work!, reason:", exeErr.Error())
 		r.Do = protocol.NotifyDoFail
 	} else {
-		cmdExe = cgProductDir + "/aget/svnInfo"
+		cmdExe = cgProductDir + "/agent/svnInfo"
 		result, exeErr = utils.ExeShell("sh", cmdExe, "")
 		if exeErr != nil {
 			log.Println("Update cannt work!, reason:", exeErr.Error())
