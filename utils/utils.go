@@ -179,7 +179,6 @@ func LoadConfigJson() error {
 		return err
 	}
 	configJson = string(fBytes)
-	log.Println("load json file", configJson)
 	return nil
 }
 func DeepCopy(dst, src interface{}) error {

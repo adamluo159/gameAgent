@@ -25,6 +25,7 @@ const (
 	Tzone      int = 1
 	TzoneDB    int = 2
 	TzonelogDB int = 3
+	TSvn       int = 4
 
 	Regzone      string = "^zone[0-9]*[1-9][0-9]*$"
 	RegzoneDB    string = "^zonedb[0-9]*[1-9][0-9]*$"
@@ -49,12 +50,14 @@ const (
 	CmdStopHostZone  uint32 = 6 //关闭该机器上所有区服
 	CmdZoneState     uint32 = 7 //区服状态(true:开启，false:关闭)
 	CmdNewZone       uint32 = 8 //新增区服
+	CmdUpdateSvn     uint32 = 9 //svn更新
 )
 
 type C2sToken struct {
-	Token    string
-	Host     string
-	Mservice map[string]bool
+	Token       string
+	Host        string
+	CodeVersion string
+	Mservice    map[string]bool
 }
 
 type S2cNotifyDo struct {
@@ -62,8 +65,9 @@ type S2cNotifyDo struct {
 	Req  int
 }
 type C2sNotifyDone struct {
-	Req int
-	Do  int
+	Req    int
+	Do     int
+	Result string
 }
 type C2sZoneState struct {
 	Zone string

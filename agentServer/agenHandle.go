@@ -94,7 +94,7 @@ func (c *Client) TokenCheck(data []byte) {
 		return
 	}
 	c.host = p.Host
-	c.curSerivceDo = make(map[int]int)
+	c.curSerivceDo = make(map[int]protocol.C2sNotifyDone)
 	gserver.clients[p.Host] = c
 
 	m := gserver.mhMgr.GetMachineByName(p.Host)
@@ -131,7 +131,7 @@ func (c *Client) HostNotifyDo(cmd uint32, servicesT int) {
 	r := protocol.C2sNotifyDone{}
 	protocol.WaitCallBack(p.Req, &r, 60*2)
 	log.Println("recv host cb :", r, c.curSerivceDo[servicesT])
-	c.curSerivceDo[servicesT] = r.Do
+	c.curSerivceDo[servicesT] = r
 	//if r.Do == protocol.NotifyDoFail {
 	//	c.zoneServiceMap[c] = false
 	//}

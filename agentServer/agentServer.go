@@ -16,8 +16,9 @@ import (
 type Client struct {
 	conn           *net.Conn
 	host           string
-	curSerivceDo   map[int]int
+	curSerivceDo   map[int]protocol.C2sNotifyDone
 	zoneServiceMap map[string]bool
+	codeVersion    string
 }
 
 // TCP server
@@ -156,7 +157,7 @@ func (s *Aserver) UpdateZone(host string) int {
 
 func (s *Aserver) OperateAllZone(op uint32) int {
 	for _, v := range s.clients {
-		v.curSerivceDo[protocol.Tzone] = protocol.NotifyDoing
+		v.curSerivceDo[protocol.Tzone] = protocol.C2sNotifyDone{Do: protocol.NotifyDoing}
 		go v.HostNotifyDo(op, protocol.Tzone)
 	}
 	suc := protocol.NotifyDoFail
@@ -165,12 +166,12 @@ func (s *Aserver) OperateAllZone(op uint32) int {
 		suc = protocol.NotifyDoSuc
 		for _, v := range s.clients {
 			ret := v.curSerivceDo[protocol.Tzone]
-			if ret == protocol.NotifyDoing {
+			if ret.Do == protocol.NotifyDoing {
 				done = false
 				break
 			}
-			if ret == protocol.NotifyDoFail {
-				suc = ret
+			if ret.Do == protocol.NotifyDoFail {
+				suc = ret.Do
 			}
 			log.Println("check cb:", v.host, v.curSerivceDo, suc)
 		}
@@ -218,11 +219,11 @@ func (s *Aserver) OnlineZones() []comInterface.ZoneStates {
 	return sz
 }
 
-func (s *Aserver) CheckOnlineMachine(mName string) bool {
-	if _, ok := (*s).clients[mName]; ok {
-		return true
+func (s *Aserver) CheckOnlineMachine(mName string) (bool, string) {
+	if v, ok := (*s).clients[mName]; ok {
+		return true, v.codeVersion
 	}
-	return false
+	return false, ""
 }
 
 func (s *Aserver) AddNewZone(host string, zone string, zid int) {
@@ -245,4 +246,53 @@ func (s *Aserver) AddNewZone(host string, zone string, zid int) {
 	}
 	r := protocol.C2sNotifyDone{}
 	protocol.WaitCallBack(p.Req, &r, 30)
+}
+
+func (s *Aserver) UpdateSvn(host string) bool {
+	c := (*s).clients[host]
+	if c == nil {
+		log.Println(" Update, cannt find host client:", host)
+		return false
+	}
+	req := protocol.GetReqIndex()
+	p := protocol.S2cNotifyDo{
+		Req: req,
+	}
+	err := protocol.SendJson(c.conn, protocol.CmdUpdateSvn, p)
+	if err != nil {
+		log.Println(host + "  updateSvn: " + err.Error())
+		return false
+	}
+	r := protocol.C2sNotifyDone{}
+	protocol.WaitCallBack(p.Req, &r, 30)
+	if r.Do == protocol.NotifyDoSuc {
+		c.codeVersion = r.Result
+	}
+	return r.Do == protocol.NotifyDoSuc
+}
+
+func (s *Aserver) UpdateSvnAll() bool {
+	for _, v := range s.clients {
+		v.curSerivceDo[protocol.Tzone] = protocol.C2sNotifyDone{Do: protocol.NotifyDoing}
+		go v.HostNotifyDo(protocol.CmdUpdateSvn, protocol.TSvn)
+	}
+	cLen := len(s.clients)
+	suc := protocol.NotifyDoFail
+	for index := 0; index < 30; index++ {
+		cur := 0
+		for _, v := range s.clients {
+			ret := v.curSerivceDo[protocol.TSvn]
+			if ret.Do == protocol.NotifyDoSuc {
+				v.codeVersion = ret.Result
+				cur = cur + 1
+			}
+		}
+		if cur == cLen {
+			suc = protocol.NotifyDoSuc
+			break
+		}
+		suc = protocol.NotifyDoFail
+		time.Sleep(time.Second * 10)
+	}
+	return suc == protocol.NotifyDoSuc
 }

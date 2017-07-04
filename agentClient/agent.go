@@ -48,6 +48,7 @@ var (
 	cgServerFile  string
 	phpTemplate   string = "logdb=%s&logdir=%s&method=%s&sdb=%s"
 	logConfs      LogsInfo
+	codeVersion   string
 
 	CheckProcessName = map[int]string{
 		protocol.Tzone: "checkZoneProcess",
@@ -69,6 +70,13 @@ func RegCmd() {
 	cgProductDir = os.Getenv("HOME") + "/product/server/"
 	cgServerFile = cgProductDir + "/cgServer"
 	cgPhp = cgProductDir + "/php/api/api.php"
+	cmdExe := cgProductDir + "svninfo"
+
+	var exeErr error
+	codeVersion, exeErr = utils.ExeShell("sh", cmdExe, "")
+	if exeErr != nil {
+		log.Println("execute sh error, ", exeErr.Error())
+	}
 
 	os.Mkdir(localDir, os.ModePerm)
 	msgMap = make(map[uint32]func([]byte))
@@ -79,6 +87,7 @@ func RegCmd() {
 	msgMap[protocol.CmdStartHostZone] = S2cStartHostZones
 	msgMap[protocol.CmdStopHostZone] = S2cStopHostZones
 	msgMap[protocol.CmdNewZone] = S2cNewZone
+	msgMap[protocol.CmdUpdateSvn] = S2cUpdateSvn
 }
 
 func ExecPhpForLogdb() {
@@ -212,6 +221,7 @@ func C2sCheckReq() {
 	}
 	p.Host = host
 	p.Token = utils.CreateMd5("cgyx2017")
+	p.CodeVersion = codeVersion
 	protocol.SendJson(gConn, protocol.CmdToken, &p)
 }
 
@@ -466,5 +476,38 @@ func S2cNewZone(data []byte) {
 		r.Do = protocol.NotifyDoSuc
 		InitServiceStatus(p.Name)
 	}
+	protocol.SendJson(gConn, protocol.CmdNewZone, r)
+}
+
+func S2cUpdateSvn(data []byte) {
+	p := protocol.S2cNotifyDo{}
+	err := json.Unmarshal(data, &p)
+	if err != nil {
+		log.Println(" Stop Zone uncode json err, zone:", err.Error())
+		return
+	}
+	r := protocol.C2sNotifyDone{
+		Req: p.Req,
+		Do:  protocol.NotifyDoSuc,
+	}
+	log.Println("update zoneConfig, Name:", p.Name, "req:", p.Req)
+
+	cmdExe := cgProductDir + "/aget/svnUp"
+	result, exeErr := utils.ExeShell("sh", cmdExe, "")
+	if exeErr != nil {
+		log.Println("Update cannt work!, reason:", exeErr.Error())
+		r.Do = protocol.NotifyDoFail
+	} else {
+		cmdExe = cgProductDir + "/aget/svnInfo"
+		result, exeErr = utils.ExeShell("sh", cmdExe, "")
+		if exeErr != nil {
+			log.Println("Update cannt work!, reason:", exeErr.Error())
+			r.Do = protocol.NotifyDoFail
+		} else {
+			r.Do = protocol.NotifyDoSuc
+			r.Result = result
+		}
+	}
+
 	protocol.SendJson(gConn, protocol.CmdNewZone, r)
 }
