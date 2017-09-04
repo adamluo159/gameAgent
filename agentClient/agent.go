@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"strings"
 	"time"
 
 	"encoding/json"
@@ -21,11 +20,10 @@ type (
 
 	//服务信息
 	ServiceInfo struct {
-		Sname     string //服务名
-		Started   bool   //游戏区服是否已启动
-		Gof       bool   //是否开启定时检查进程功能
-		Operating bool
-		Tservice  int
+		Sname          string //服务名
+		Started        bool   //游戏区服是否已启动
+		RegularlyCheck bool   //是否开启定时检查进程功能
+		Operating      bool
 	}
 
 	Agent struct {
@@ -56,52 +54,23 @@ type (
 var (
 	conf Conf
 
-	msgMap           map[uint32]func([]byte)
-	hostName         string
-	codeVersion      string
-	CheckProcessName = map[int]string{
-		protocol.Tzone: "checkZoneProcess",
-	}
+	hostName string
+	SvnVer   string
 )
 
-func (agent *Agent) ExecPhpForLogdb() {
-	for {
-		for k := range agent.logPhpArg {
-			utils.ExeShell("php", conf.CgPhp, agent.logPhpArg[k])
-		}
-		time.Sleep(time.Minute * 5)
+func UpdateSvn() {
+	ver, err := utils.ExeShell("sh", conf.CmdSvnVer, "")
+	if err != nil {
+		log.Fatal("update svn ", err)
 	}
+	SvnVer = ver
 }
 
-func (agent *Agent) CheckProcessStatus(checkShellName string, dstName string) {
-	for {
-		s := agent.srvs[dstName]
-		if s.Started == false {
-			s.Gof = false
-			break
-		}
-		if CheckProcess(s.Tservice, dstName) == false {
-			log.Println("check process error ", dstName)
-		}
-		time.Sleep(time.Minute * 30)
+func UpdateGameConf() {
+	_, err := utils.ExeShellArgs3("expect", "./synGameConf_expt", conf.RemoteIP, conf.RemoteConfDir, conf.LocalConfDir)
+	if err != nil {
+		log.Fatal("Update gameConf:", err)
 	}
-}
-
-//检查进程是否存在
-func CheckProcess(tservice int, dstName string) bool {
-	checkShellName, ok := CheckProcessName[tservice]
-	if !ok {
-		log.Println("checkprocess cannt get type shellName", dstName, tservice)
-		return false
-	}
-
-	check := conf.ProductDir + "/agent/" + checkShellName
-	ret, _ := utils.ExeShell("sh", check, dstName)
-	s := strings.Replace(string(ret), " ", "", -1)
-	if s != "" {
-		return false
-	}
-	return true
 }
 
 func LoadConfig() {
@@ -122,13 +91,37 @@ func LoadConfig() {
 	}
 	conf.RemoteConfDir += hostName
 
-	var exeErr error
-	codeVersion, exeErr = utils.ExeShell("sh", conf.CmdSvnVer, "")
-	if exeErr != nil {
-		log.Fatal(exeErr)
-	}
-
+	UpdateSvn()
+	UpdateGameConf()
 	os.Mkdir(conf.LocalConfDir, os.ModePerm)
+}
+
+func LoadLogFile(agent *Agent) {
+	hostDir := conf.LocalConfDir + hostName
+	dir, err := ioutil.ReadDir(hostDir)
+	if err != nil {
+		log.Println("LoadLogFile, read dir err, ", err.Error())
+	}
+	for index := 0; index < len(dir); index++ {
+		serviceName := dir[index].Name()
+
+		file := hostDir + "/" + serviceName + "/logdbconf"
+		l, err := ioutil.ReadFile(file)
+		if err != nil {
+			log.Println("LoadLogFile, read file err, ", file, err.Error())
+		}
+		db := LogdbConf{}
+		jerr := json.Unmarshal(l, &db)
+		if jerr != nil {
+			log.Println("LoadLogFile uncode json", jerr.Error())
+		}
+		agent.logdbIP[db.DirName] = db.IP
+		agent.logPhpArg[db.DirName] = fmt.Sprintf(conf.PhpTemplate, db.IP, db.DirName, "Crontab.dataProcess", db.IP)
+
+		agent.InitSrv(serviceName)
+		log.Println("LoadLogFile, logs:, ", db.DirName, agent.logPhpArg[db.DirName])
+	}
+	go agent.GameLogFileToDB()
 }
 
 func New() *Agent {
@@ -140,6 +133,8 @@ func New() *Agent {
 		logPhpArg: make(map[string]string),
 	}
 
+	LoadLogFile(&a)
+
 	a.msgMap[protocol.CmdToken] = a.S2cCheckRsp
 	a.msgMap[protocol.CmdStartZone] = a.S2cStartZone
 	a.msgMap[protocol.CmdStopZone] = a.S2cStopZone
@@ -149,8 +144,24 @@ func New() *Agent {
 	a.msgMap[protocol.CmdNewZone] = a.S2cNewZone
 	a.msgMap[protocol.CmdUpdateSvn] = a.S2cUpdateSvn
 
+	a.RegularlyCheckProcess()
+
 	return &a
 
+}
+
+//目前只有zone级服务初始化,后面添加登陆、充值等
+func (agent *Agent) InitSrv(name string) {
+	if _, ok := agent.srvs[name]; ok {
+		return
+	}
+
+	run := CheckProcess(name)
+	agent.srvs[name] = &ServiceInfo{
+		Started:        run,
+		RegularlyCheck: run,
+		Sname:          name,
+	}
 }
 
 func (agent *Agent) Connect() {
@@ -209,27 +220,20 @@ func (agent *Agent) Connect() {
 	}
 }
 
+//同步本机信息(机器名、机器上服务以及起停状态、svn代码版本号)
 func (agent *Agent) C2sCheckReq() {
 	p := protocol.C2sToken{
 		Mservice: make(map[string]bool),
 	}
-	host, hostErr := os.Hostname()
-	if hostErr != nil {
-		log.Println(":checkReq:", hostErr.Error())
-	}
 
-	_, exeErr := utils.ExeShellArgs3("expect", "./synGameConf_expt", conf.RemoteIP, conf.RemoteConfDir, conf.LocalConfDir)
-	if exeErr != nil {
-		log.Println("Update cannt work!, reason:", exeErr.Error())
-	}
-	agent.LoadLogFile()
+	p.Host = hostName
+	p.Token = utils.CreateMd5("cgyx2017")
+	p.CodeVersion = SvnVer
 
 	for k, v := range agent.srvs {
 		p.Mservice[k] = v.Started
 	}
-	p.Host = host
-	p.Token = utils.CreateMd5("cgyx2017")
-	p.CodeVersion = codeVersion
+
 	protocol.SendJson(agent.conn, protocol.CmdToken, &p)
 }
 
@@ -246,95 +250,47 @@ func (agent *Agent) S2cCheckRsp(data []byte) {
 	//}
 }
 
-func (agent *Agent) LoadLogFile() {
-	hostDir := conf.LocalConfDir + hostName
-	dir, err := ioutil.ReadDir(hostDir)
-	if err != nil {
-		log.Println("LoadLogFile, read dir err, ", err.Error())
-	}
-	for index := 0; index < len(dir); index++ {
-		serviceName := dir[index].Name()
-		file := hostDir + "/" + serviceName + "/logdbconf"
-		l, err := ioutil.ReadFile(file)
-		if err != nil {
-			log.Println("LoadLogFile, read file err, ", file, err.Error())
-		}
-		db := LogdbConf{}
-		jerr := json.Unmarshal(l, &db)
-		if jerr != nil {
-			log.Println("LoadLogFile uncode json", jerr.Error())
-		}
-		agent.logdbIP[db.DirName] = db.IP
-		agent.logPhpArg[db.DirName] = fmt.Sprintf(conf.PhpTemplate, db.IP, db.DirName, "Crontab.dataProcess", db.IP)
-		log.Println("LoadLogFile, logs:, ", db.DirName, agent.logPhpArg[db.DirName])
-		agent.InitServiceStatus(serviceName)
-	}
-	go agent.ExecPhpForLogdb()
-}
-
-//目前只有zone级服务初始化,后面添加登陆、充值等
-
-func (agent *Agent) InitServiceStatus(name string) {
-	agent.srvs[name] = &ServiceInfo{}
-	t := utils.AgentServiceType(name, protocol.TserviceReg)
-	agent.srvs[name].Tservice = t
-	agent.srvs[name].Started = CheckProcess(t, name)
-	agent.srvs[name].Gof = false
-	agent.srvs[name].Sname = name
-
-	if agent.srvs[name].Started {
-		go agent.CheckProcessStatus("checkZoneProcess", name)
-		agent.srvs[name].Gof = true
-	}
-}
-
 func (agent *Agent) StartZone(zone string) int {
-	t := agent.srvs[zone].Tservice
 	log.Println("recv start zone, zone:", zone)
-	s := CheckProcess(t, zone)
-	if s == false {
+
+	run := CheckProcess(zone)
+	if run == false {
 		utils.ExeShellArgs3("sh", conf.ProductDir+"/cgServer", "start", zone, "")
 		for index := 0; index < 6; index++ {
-			if s {
+			if run {
 				break
 			}
-			s = CheckProcess(t, zone)
+			run = CheckProcess(zone)
 			time.Sleep(time.Second * 5)
 		}
 	}
 	ret := protocol.NotifyDoFail
-	agent.srvs[zone].Started = s
-	if s == true {
-		if agent.srvs[zone].Gof == false {
-			go agent.CheckProcessStatus("checkZoneProcess", zone)
-			agent.srvs[zone].Gof = true
-		}
+	agent.srvs[zone].Started = run
+	if run == true {
+		agent.srvs[zone].RegularlyCheck = true
 		ret = protocol.NotifyDoSuc
 	}
 	agent.S2cZoneState(zone)
-	agent.srvs[zone].Operating = false
 	return ret
 }
 
 func (agent *Agent) StopZone(zone string) int {
 	log.Println("recv start zone, zone:", zone)
-	t := agent.srvs[zone].Tservice
-
-	s := CheckProcess(t, zone)
-	if s == false {
+	run := CheckProcess(zone)
+	if run == false {
 		agent.srvs[zone].Started = false
-		agent.srvs[zone].Gof = false
+		agent.srvs[zone].RegularlyCheck = false
 
 		return protocol.NotifyDoSuc
 	}
 	utils.ExeShellArgs2("sh", conf.ProductDir+"/cgServer", "stop", zone)
-	s = CheckProcess(t, zone)
-	if s {
+	run = CheckProcess(zone)
+	if run {
 		return protocol.NotifyDoFail
 	}
 
 	agent.srvs[zone].Started = false
-	agent.srvs[zone].Gof = false
+	agent.srvs[zone].RegularlyCheck = false
 	agent.S2cZoneState(zone)
 	return protocol.NotifyDoSuc
 }
@@ -350,14 +306,11 @@ func (agent *Agent) S2cUpdateZoneConfig(data []byte) {
 		Req: p.Req,
 		Do:  protocol.NotifyDoFail,
 	}
+
 	log.Println("update zoneConfig, Name:", p.Name, "req:", p.Req)
-	_, exeErr := utils.ExeShellArgs3("expect", "./synGameConf_expt", conf.RemoteIP, conf.RemoteConfDir, conf.LocalConfDir)
-	if exeErr != nil {
-		log.Println("Update cannt work!, reason:", exeErr.Error())
-		r.Do = protocol.NotifyDoFail
-	} else {
-		r.Do = protocol.NotifyDoSuc
-	}
+	UpdateGameConf()
+
+	r.Do = protocol.NotifyDoSuc
 	protocol.SendJson(agent.conn, protocol.CmdUpdateHost, r)
 }
 
@@ -421,9 +374,8 @@ func (agent *Agent) S2cStartHostZones(data []byte) {
 		Do:  protocol.NotifyDoSuc,
 	}
 
-	for k := range agent.srvs {
-		z := agent.srvs[k]
-		ret := agent.StartZone(z.Sname)
+	for k, _ := range agent.srvs {
+		ret := agent.StartZone(k)
 		if ret != protocol.NotifyDoSuc {
 			r.Do = ret
 		}
@@ -442,10 +394,8 @@ func (agent *Agent) S2cStopHostZones(data []byte) {
 		Req: p.Req,
 		Do:  protocol.NotifyDoSuc,
 	}
-	log.Println("aaaa:", agent.srvs)
-	for k := range agent.srvs {
-		z := agent.srvs[k]
-		ret := agent.StopZone(z.Sname)
+	for k, _ := range agent.srvs {
+		ret := agent.StopZone(k)
 		if ret != protocol.NotifyDoSuc {
 			r.Do = ret
 		}
@@ -477,14 +427,11 @@ func (agent *Agent) S2cNewZone(data []byte) {
 		Do:  protocol.NotifyDoSuc,
 	}
 	log.Println("update zoneConfig, Name:", p.Name, "req:", p.Req)
-	_, exeErr := utils.ExeShellArgs3("expect", "./synGameConf_expt", conf.RemoteIP, conf.RemoteConfDir, conf.LocalConfDir)
-	if exeErr != nil {
-		log.Println("Update cannt work!, reason:", exeErr.Error())
-		r.Do = protocol.NotifyDoFail
-	} else {
-		r.Do = protocol.NotifyDoSuc
-		agent.InitServiceStatus(p.Name)
-	}
+
+	UpdateGameConf()
+	agent.InitSrv(p.Name)
+
+	r.Do = protocol.NotifyDoSuc
 	protocol.SendJson(agent.conn, protocol.CmdNewZone, r)
 }
 
@@ -515,7 +462,7 @@ func (agent *Agent) S2cUpdateSvn(data []byte) {
 		} else {
 			r.Do = protocol.NotifyDoSuc
 			r.Result = result
-			codeVersion = r.Result
+			SvnVer = r.Result
 		}
 	}
 	protocol.SendJson(agent.conn, protocol.CmdNewZone, r)
