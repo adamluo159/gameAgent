@@ -29,9 +29,11 @@ type (
 	}
 
 	Agent struct {
-		conn          *net.Conn
-		msgMap        map[uint32]func([]byte)
-		agentServices map[string]*ServiceInfo //agent起的服务信息
+		conn      *net.Conn
+		msgMap    map[uint32]func([]byte)
+		srvs      map[string]*ServiceInfo //agent起的服务信息
+		logdbIP   map[string]string
+		logPhpArg map[string]string
 	}
 
 	Conf struct {
@@ -44,51 +46,28 @@ type (
 		CmdSvnVer     string
 		PhpTemplate   string
 	}
+
+	LogdbConf struct {
+		DirName string
+		IP      string
+	}
 )
-
-type LogsInfo struct {
-	logdbIP   map[string]string
-	logPhpArg map[string]string
-}
-
-type LogdbConf struct {
-	DirName string
-	IP      string
-}
 
 var (
 	conf Conf
 
 	msgMap           map[uint32]func([]byte)
 	hostName         string
-	logConfs         LogsInfo
 	codeVersion      string
 	CheckProcessName = map[int]string{
 		protocol.Tzone: "checkZoneProcess",
 	}
 )
 
-//func RegCmd() {
-//	logConfs.logdbIP = make(map[string]string)
-//	logConfs.logPhpArg = make(map[string]string)
-//
-//	agent.agentServices = make(map[string]*ServiceInfo)
-//
-//	msgMap = make(map[uint32]func([]byte))
-//	msgMap[protocol.CmdToken] = S2cCheckRsp
-//	msgMap[protocol.CmdStartZone] = S2cStartZone
-//	msgMap[protocol.CmdStopZone] = S2cStopZone
-//	msgMap[protocol.CmdUpdateHost] = S2cUpdateZoneConfig
-//	msgMap[protocol.CmdStartHostZone] = S2cStartHostZones
-//	msgMap[protocol.CmdStopHostZone] = S2cStopHostZones
-//	msgMap[protocol.CmdNewZone] = S2cNewZone
-//	msgMap[protocol.CmdUpdateSvn] = S2cUpdateSvn
-//}
-
-func ExecPhpForLogdb() {
+func (agent *Agent) ExecPhpForLogdb() {
 	for {
-		for k := range logConfs.logPhpArg {
-			utils.ExeShell("php", conf.CgPhp, logConfs.logPhpArg[k])
+		for k := range agent.logPhpArg {
+			utils.ExeShell("php", conf.CgPhp, agent.logPhpArg[k])
 		}
 		time.Sleep(time.Minute * 5)
 	}
@@ -96,7 +75,7 @@ func ExecPhpForLogdb() {
 
 func (agent *Agent) CheckProcessStatus(checkShellName string, dstName string) {
 	for {
-		s := agent.agentServices[dstName]
+		s := agent.srvs[dstName]
 		if s.Started == false {
 			s.Gof = false
 			break
@@ -155,11 +134,11 @@ func LoadConfig() {
 func New() *Agent {
 	LoadConfig()
 	a := Agent{
-		agentServices: make(map[string]*ServiceInfo),
-		msgMap:        make(map[uint32]func([]byte)),
+		srvs:      make(map[string]*ServiceInfo),
+		msgMap:    make(map[uint32]func([]byte)),
+		logdbIP:   make(map[string]string),
+		logPhpArg: make(map[string]string),
 	}
-	logConfs.logdbIP = make(map[string]string)
-	logConfs.logPhpArg = make(map[string]string)
 
 	a.msgMap[protocol.CmdToken] = a.S2cCheckRsp
 	a.msgMap[protocol.CmdStartZone] = a.S2cStartZone
@@ -245,7 +224,7 @@ func (agent *Agent) C2sCheckReq() {
 	}
 	agent.LoadLogFile()
 
-	for k, v := range agent.agentServices {
+	for k, v := range agent.srvs {
 		p.Mservice[k] = v.Started
 	}
 	p.Host = host
@@ -285,31 +264,32 @@ func (agent *Agent) LoadLogFile() {
 		if jerr != nil {
 			log.Println("LoadLogFile uncode json", jerr.Error())
 		}
-		logConfs.logdbIP[db.DirName] = db.IP
-		logConfs.logPhpArg[db.DirName] = fmt.Sprintf(conf.PhpTemplate, db.IP, db.DirName, "Crontab.dataProcess", db.IP)
-		log.Println("LoadLogFile, logs:, ", db.DirName, logConfs.logPhpArg[db.DirName])
+		agent.logdbIP[db.DirName] = db.IP
+		agent.logPhpArg[db.DirName] = fmt.Sprintf(conf.PhpTemplate, db.IP, db.DirName, "Crontab.dataProcess", db.IP)
+		log.Println("LoadLogFile, logs:, ", db.DirName, agent.logPhpArg[db.DirName])
 		agent.InitServiceStatus(serviceName)
 	}
-	go ExecPhpForLogdb()
+	go agent.ExecPhpForLogdb()
 }
 
 //目前只有zone级服务初始化,后面添加登陆、充值等
-func (agent *Agent) InitServiceStatus(name string) {
-	agent.agentServices[name] = &ServiceInfo{}
-	t := utils.AgentServiceType(name, protocol.TserviceReg)
-	agent.agentServices[name].Tservice = t
-	agent.agentServices[name].Started = CheckProcess(t, name)
-	agent.agentServices[name].Gof = false
-	agent.agentServices[name].Sname = name
 
-	if agent.agentServices[name].Started {
+func (agent *Agent) InitServiceStatus(name string) {
+	agent.srvs[name] = &ServiceInfo{}
+	t := utils.AgentServiceType(name, protocol.TserviceReg)
+	agent.srvs[name].Tservice = t
+	agent.srvs[name].Started = CheckProcess(t, name)
+	agent.srvs[name].Gof = false
+	agent.srvs[name].Sname = name
+
+	if agent.srvs[name].Started {
 		go agent.CheckProcessStatus("checkZoneProcess", name)
-		agent.agentServices[name].Gof = true
+		agent.srvs[name].Gof = true
 	}
 }
 
 func (agent *Agent) StartZone(zone string) int {
-	t := agent.agentServices[zone].Tservice
+	t := agent.srvs[zone].Tservice
 	log.Println("recv start zone, zone:", zone)
 	s := CheckProcess(t, zone)
 	if s == false {
@@ -323,27 +303,27 @@ func (agent *Agent) StartZone(zone string) int {
 		}
 	}
 	ret := protocol.NotifyDoFail
-	agent.agentServices[zone].Started = s
+	agent.srvs[zone].Started = s
 	if s == true {
-		if agent.agentServices[zone].Gof == false {
+		if agent.srvs[zone].Gof == false {
 			go agent.CheckProcessStatus("checkZoneProcess", zone)
-			agent.agentServices[zone].Gof = true
+			agent.srvs[zone].Gof = true
 		}
 		ret = protocol.NotifyDoSuc
 	}
 	agent.S2cZoneState(zone)
-	agent.agentServices[zone].Operating = false
+	agent.srvs[zone].Operating = false
 	return ret
 }
 
 func (agent *Agent) StopZone(zone string) int {
 	log.Println("recv start zone, zone:", zone)
-	t := agent.agentServices[zone].Tservice
+	t := agent.srvs[zone].Tservice
 
 	s := CheckProcess(t, zone)
 	if s == false {
-		agent.agentServices[zone].Started = false
-		agent.agentServices[zone].Gof = false
+		agent.srvs[zone].Started = false
+		agent.srvs[zone].Gof = false
 
 		return protocol.NotifyDoSuc
 	}
@@ -353,8 +333,8 @@ func (agent *Agent) StopZone(zone string) int {
 		return protocol.NotifyDoFail
 	}
 
-	agent.agentServices[zone].Started = false
-	agent.agentServices[zone].Gof = false
+	agent.srvs[zone].Started = false
+	agent.srvs[zone].Gof = false
 	agent.S2cZoneState(zone)
 	return protocol.NotifyDoSuc
 }
@@ -394,14 +374,14 @@ func (agent *Agent) S2cStartZone(data []byte) {
 		Do:  protocol.NotifyDoFail,
 	}
 
-	if agent.agentServices[zone].Operating {
+	if agent.srvs[zone].Operating {
 		r.Do = protocol.NotifyDoing
 		protocol.SendJson(agent.conn, protocol.CmdStartZone, r)
 		return
 	}
-	agent.agentServices[zone].Operating = true
+	agent.srvs[zone].Operating = true
 	r.Do = agent.StartZone(zone)
-	agent.agentServices[zone].Operating = false
+	agent.srvs[zone].Operating = false
 	protocol.SendJson(agent.conn, protocol.CmdStartZone, r)
 }
 
@@ -418,14 +398,14 @@ func (agent *Agent) S2cStopZone(data []byte) {
 		Do:  protocol.NotifyDoFail,
 	}
 	log.Println("recv stop msg, Name:", zone, "req:", p.Req)
-	if agent.agentServices[zone].Operating {
+	if agent.srvs[zone].Operating {
 		r.Do = protocol.NotifyDoing
 		protocol.SendJson(agent.conn, protocol.CmdStopZone, r)
 		return
 	}
-	agent.agentServices[zone].Operating = true
+	agent.srvs[zone].Operating = true
 	r.Do = agent.StopZone(zone)
-	agent.agentServices[zone].Operating = false
+	agent.srvs[zone].Operating = false
 	protocol.SendJson(agent.conn, protocol.CmdStopZone, r)
 }
 
@@ -441,8 +421,8 @@ func (agent *Agent) S2cStartHostZones(data []byte) {
 		Do:  protocol.NotifyDoSuc,
 	}
 
-	for k := range agent.agentServices {
-		z := agent.agentServices[k]
+	for k := range agent.srvs {
+		z := agent.srvs[k]
 		ret := agent.StartZone(z.Sname)
 		if ret != protocol.NotifyDoSuc {
 			r.Do = ret
@@ -462,9 +442,9 @@ func (agent *Agent) S2cStopHostZones(data []byte) {
 		Req: p.Req,
 		Do:  protocol.NotifyDoSuc,
 	}
-	log.Println("aaaa:", agent.agentServices)
-	for k := range agent.agentServices {
-		z := agent.agentServices[k]
+	log.Println("aaaa:", agent.srvs)
+	for k := range agent.srvs {
+		z := agent.srvs[k]
 		ret := agent.StopZone(z.Sname)
 		if ret != protocol.NotifyDoSuc {
 			r.Do = ret
@@ -477,7 +457,7 @@ func (agent *Agent) S2cStopHostZones(data []byte) {
 func (agent *Agent) S2cZoneState(zone string) {
 	p := protocol.C2sZoneState{
 		Zone: zone,
-		Open: agent.agentServices[zone].Started,
+		Open: agent.srvs[zone].Started,
 	}
 	err := protocol.SendJson(agent.conn, protocol.CmdZoneState, p)
 	if err != nil {
