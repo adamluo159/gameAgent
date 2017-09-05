@@ -31,7 +31,6 @@ type (
 		conn      *net.Conn
 		msgMap    map[uint32]func([]byte)
 		srvs      map[string]*ServiceInfo //后台配置该机器所有的服务信息
-		logdbIP   map[string]string       //日志的logdbIP集合
 		logPhpArg map[string]string       //php执行参数集合
 	}
 
@@ -63,49 +62,17 @@ var (
 	SvnVer   string //svn版本号
 )
 
-func StartZone(zone string) bool {
-	run := CheckProcess(zone)
-	if run == false {
-		utils.ExeShellArgs3("sh", conf.ProductDir+"/cgServer", "start", zone, "")
-		for index := 0; index < 6; index++ {
-			if run {
-				break
-			}
-			run = CheckProcess(zone)
-			time.Sleep(time.Second * 5)
-		}
-	}
-	return run
+func init() {
+	LoadConfig()
+
+	SvnInfo()
+
+	UpdateGameConf()
+
+	os.Mkdir(conf.LocalConfDir, os.ModePerm)
 }
 
-func StopZone(zone string) bool {
-	utils.ExeShellArgs2("sh", conf.ProductDir+"/cgServer", "stop", zone)
-	run := CheckProcess(zone)
-	return !run
-}
-
-func SvnInfo() {
-	ver, err := utils.ExeShell("sh", conf.CmdSvnVer, "")
-	if err != nil {
-		log.Fatal("update svn ", err)
-	}
-	SvnVer = ver
-}
-
-func SvnUp() {
-	_, upErr := utils.ExeShell("sh", conf.CmdSvnUp, "")
-	if upErr != nil {
-		log.Fatal("svn up,", upErr)
-	}
-}
-
-func UpdateGameConf() {
-	_, err := utils.ExeShellArgs3("expect", "./synGameConf_expt", conf.RemoteIP, conf.RemoteConfDir, conf.LocalConfDir)
-	if err != nil {
-		log.Fatal("Update gameConf:", err)
-	}
-}
-
+//加载配置信息
 func LoadConfig() {
 	hostName, _ = os.Hostname()
 	if hostName == "" {
@@ -124,60 +91,44 @@ func LoadConfig() {
 	}
 	conf.RemoteConfDir += hostName
 
-	SvnInfo()
-	UpdateGameConf()
-	os.Mkdir(conf.LocalConfDir, os.ModePerm)
 }
 
-//检查进程是否存在
-func CheckProcess(dstName string) bool {
-	check := conf.ProductDir + "/agent/" + "checkZoneProcess"
-	ret, _ := utils.ExeShell("sh", check, dstName)
-	s := strings.Replace(string(ret), " ", "", -1)
-	if s != "" {
-		return false
-	}
-	return true
-}
-
-func LoadLogFile(agent *Agent) {
+//加载本地游戏配置
+func LoadServices(agent *Agent) {
 	hostDir := conf.LocalConfDir + hostName
 	dir, err := ioutil.ReadDir(hostDir)
 	if err != nil {
-		log.Println("LoadLogFile, read dir err, ", err.Error())
+		log.Println("LoadServices, read dir err, ", err.Error())
 	}
 	for index := 0; index < len(dir); index++ {
 		serviceName := dir[index].Name()
+		agent.InitSrv(serviceName)
 
 		file := hostDir + "/" + serviceName + "/logdbconf"
 		l, err := ioutil.ReadFile(file)
 		if err != nil {
-			log.Println("LoadLogFile, read file err, ", file, err.Error())
+			log.Println("LoadServices, read file err, ", file, err.Error())
 		}
 		db := LogdbConf{}
 		jerr := json.Unmarshal(l, &db)
 		if jerr != nil {
-			log.Println("LoadLogFile uncode json", jerr.Error())
+			log.Println("LoadServices uncode json", jerr.Error())
 		}
-		agent.logdbIP[db.DirName] = db.IP
 		agent.logPhpArg[db.DirName] = fmt.Sprintf(conf.PhpTemplate, db.IP, db.DirName, "Crontab.dataProcess", db.IP)
-
-		agent.InitSrv(serviceName)
-		log.Println("LoadLogFile, logs:, ", db.DirName, agent.logPhpArg[db.DirName])
+		log.Println("LoadServices logs:, ", db.DirName, agent.logPhpArg[db.DirName])
 	}
 	go agent.GameLogFileToDB()
 }
 
+//生成agent实例
 func New() *Agent {
-	LoadConfig()
 	a := Agent{
 		srvs:      make(map[string]*ServiceInfo),
 		msgMap:    make(map[uint32]func([]byte)),
-		logdbIP:   make(map[string]string),
 		logPhpArg: make(map[string]string),
 	}
 
-	LoadLogFile(&a)
+	LoadServices(&a)
 	go a.RegularlyCheckProcess()
 
 	a.CmdReg()
@@ -276,4 +227,63 @@ func (agent *Agent) RegularlyCheckProcess() {
 
 		time.Sleep(time.Minute * 30)
 	}
+}
+
+//起服
+func StartZone(zone string) bool {
+	run := CheckProcess(zone)
+	if run == false {
+		utils.ExeShellArgs3("sh", conf.ProductDir+"/cgServer", "start", zone, "")
+		for index := 0; index < 6; index++ {
+			if run {
+				break
+			}
+			run = CheckProcess(zone)
+			time.Sleep(time.Second * 5)
+		}
+	}
+	return run
+}
+
+//停服
+func StopZone(zone string) bool {
+	utils.ExeShellArgs2("sh", conf.ProductDir+"/cgServer", "stop", zone)
+	run := CheckProcess(zone)
+	return !run
+}
+
+//获取svn版本
+func SvnInfo() {
+	ver, err := utils.ExeShell("sh", conf.CmdSvnVer, "")
+	if err != nil {
+		log.Fatal("update svn ", err)
+	}
+	SvnVer = ver
+}
+
+//svn更新
+func SvnUp() {
+	_, upErr := utils.ExeShell("sh", conf.CmdSvnUp, "")
+	if upErr != nil {
+		log.Fatal("svn up,", upErr)
+	}
+}
+
+//更新本地配置
+func UpdateGameConf() {
+	_, err := utils.ExeShellArgs3("expect", "./synGameConf_expt", conf.RemoteIP, conf.RemoteConfDir, conf.LocalConfDir)
+	if err != nil {
+		log.Fatal("Update gameConf:", err)
+	}
+}
+
+//检查进程是否存在
+func CheckProcess(dstName string) bool {
+	check := conf.ProductDir + "/agent/" + "checkZoneProcess"
+	ret, _ := utils.ExeShell("sh", check, dstName)
+	s := strings.Replace(string(ret), " ", "", -1)
+	if s != "" {
+		return false
+	}
+	return true
 }

@@ -37,6 +37,7 @@ func (agent *Agent) C2sCheckReq() {
 	protocol.SendJson(agent.conn, protocol.CmdToken, &p)
 }
 
+//同步回复
 func (agent *Agent) S2cCheckRsp(data []byte) {
 	r := string(data)
 	if r != "OK" {
@@ -50,6 +51,7 @@ func (agent *Agent) S2cCheckRsp(data []byte) {
 	//}
 }
 
+//更新zone配置信息
 func (agent *Agent) S2cUpdateZoneConfig(data []byte) {
 	p := protocol.S2cNotifyDo{}
 	err := json.Unmarshal(data, &p)
@@ -69,6 +71,7 @@ func (agent *Agent) S2cUpdateZoneConfig(data []byte) {
 	protocol.SendJson(agent.conn, protocol.CmdUpdateHost, r)
 }
 
+//启动游戏服
 func (agent *Agent) S2cStartZone(data []byte) {
 	p := protocol.S2cNotifyDo{}
 	err := json.Unmarshal(data, &p)
@@ -93,7 +96,7 @@ func (agent *Agent) S2cStartZone(data []byte) {
 
 	if run {
 		agent.srvs[zone].RegularlyCheck = true
-		agent.S2cZoneState(zone)
+		agent.C2sZoneState(zone)
 		r.Do = protocol.NotifyDoSuc
 
 	} else {
@@ -105,6 +108,7 @@ func (agent *Agent) S2cStartZone(data []byte) {
 	protocol.SendJson(agent.conn, protocol.CmdStartZone, r)
 }
 
+//关闭游戏服
 func (agent *Agent) S2cStopZone(data []byte) {
 	p := protocol.S2cNotifyDo{}
 	err := json.Unmarshal(data, &p)
@@ -137,6 +141,7 @@ func (agent *Agent) S2cStopZone(data []byte) {
 	protocol.SendJson(agent.conn, protocol.CmdStopZone, r)
 }
 
+//启动机器上所有的游戏服
 func (agent *Agent) S2cStartHostZones(data []byte) {
 	p := protocol.S2cNotifyDo{}
 	err := json.Unmarshal(data, &p)
@@ -154,7 +159,7 @@ func (agent *Agent) S2cStartHostZones(data []byte) {
 		v.Started = run
 		if run {
 			agent.srvs[k].RegularlyCheck = true
-			agent.S2cZoneState(k)
+			agent.C2sZoneState(k)
 		} else {
 			r.Do = protocol.NotifyDoFail
 		}
@@ -163,6 +168,7 @@ func (agent *Agent) S2cStartHostZones(data []byte) {
 	protocol.SendJson(agent.conn, protocol.CmdStartHostZone, r)
 }
 
+//关闭机器上所有的游戏服
 func (agent *Agent) S2cStopHostZones(data []byte) {
 	p := protocol.S2cNotifyDo{}
 	err := json.Unmarshal(data, &p)
@@ -179,7 +185,7 @@ func (agent *Agent) S2cStopHostZones(data []byte) {
 		if stop {
 			v.Started = false
 			v.RegularlyCheck = false
-			agent.S2cZoneState(k)
+			agent.C2sZoneState(k)
 		} else {
 			r.Do = protocol.NotifyDoFail
 		}
@@ -187,7 +193,8 @@ func (agent *Agent) S2cStopHostZones(data []byte) {
 	protocol.SendJson(agent.conn, protocol.CmdStopHostZone, r)
 }
 
-func (agent *Agent) S2cZoneState(zone string) {
+//agent同步游戏状态
+func (agent *Agent) C2sZoneState(zone string) {
 	p := protocol.C2sZoneState{
 		Zone: zone,
 		Open: agent.srvs[zone].Started,
@@ -198,6 +205,7 @@ func (agent *Agent) S2cZoneState(zone string) {
 	}
 }
 
+//新配置游戏服信息同步
 func (agent *Agent) S2cNewZone(data []byte) {
 	p := protocol.S2cNotifyDo{}
 	err := json.Unmarshal(data, &p)
@@ -217,6 +225,7 @@ func (agent *Agent) S2cNewZone(data []byte) {
 	protocol.SendJson(agent.conn, protocol.CmdNewZone, r)
 }
 
+//更新svn
 func (agent *Agent) S2cUpdateSvn(data []byte) {
 	p := protocol.S2cNotifyDo{}
 	err := json.Unmarshal(data, &p)
