@@ -6,5 +6,6 @@
 	"ProductDir"	: "/home/cgyx/product/server/",
 	"CgPhp"		: "/home/cgyx/product/server/php/api/api.php",
 	"PhpTemplate"   : "logdb=%s&logdir=%s&method=%s&sdb=%s",
-	"CmdSvnVer" 	: "/home/cgyx/product/server/agent/svnInfo"
+	"CmdSvnVer" 	: "/home/cgyx/product/server/agent/svnInfo",
+	"CmdSvnUp" 	: "/home/cgyx/product/server/agent/svnUp"
 }

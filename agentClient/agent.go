@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"encoding/json"
@@ -29,20 +30,24 @@ type (
 	Agent struct {
 		conn      *net.Conn
 		msgMap    map[uint32]func([]byte)
-		srvs      map[string]*ServiceInfo //agent起的服务信息
-		logdbIP   map[string]string
-		logPhpArg map[string]string
+		srvs      map[string]*ServiceInfo //后台配置该机器所有的服务信息
+		logdbIP   map[string]string       //日志的logdbIP集合
+		logPhpArg map[string]string       //php执行参数集合
 	}
 
 	Conf struct {
-		ConAddress    string
-		RemoteIP      string
-		RemoteConfDir string
-		LocalConfDir  string
-		ProductDir    string
-		CgPhp         string
-		CmdSvnVer     string
-		PhpTemplate   string
+		ConAddress string
+
+		RemoteIP      string //远端游戏配置仓库地址
+		RemoteConfDir string //远端游戏配置仓库目录
+		LocalConfDir  string //本地游戏配置地址
+		ProductDir    string //本地游戏目录
+
+		CgPhp       string //php执行目录
+		PhpTemplate string //php执行模板
+
+		CmdSvnVer string //svn版本更新执行串
+		CmdSvnUp  string //svn更新
 	}
 
 	LogdbConf struct {
@@ -52,18 +57,46 @@ type (
 )
 
 var (
-	conf Conf
+	conf Conf //agent配置信息
 
-	hostName string
-	SvnVer   string
+	hostName string //主机名
+	SvnVer   string //svn版本号
 )
 
-func UpdateSvn() {
+func StartZone(zone string) bool {
+	run := CheckProcess(zone)
+	if run == false {
+		utils.ExeShellArgs3("sh", conf.ProductDir+"/cgServer", "start", zone, "")
+		for index := 0; index < 6; index++ {
+			if run {
+				break
+			}
+			run = CheckProcess(zone)
+			time.Sleep(time.Second * 5)
+		}
+	}
+	return run
+}
+
+func StopZone(zone string) bool {
+	utils.ExeShellArgs2("sh", conf.ProductDir+"/cgServer", "stop", zone)
+	run := CheckProcess(zone)
+	return !run
+}
+
+func SvnInfo() {
 	ver, err := utils.ExeShell("sh", conf.CmdSvnVer, "")
 	if err != nil {
 		log.Fatal("update svn ", err)
 	}
 	SvnVer = ver
+}
+
+func SvnUp() {
+	_, upErr := utils.ExeShell("sh", conf.CmdSvnUp, "")
+	if upErr != nil {
+		log.Fatal("svn up,", upErr)
+	}
 }
 
 func UpdateGameConf() {
@@ -91,9 +124,20 @@ func LoadConfig() {
 	}
 	conf.RemoteConfDir += hostName
 
-	UpdateSvn()
+	SvnInfo()
 	UpdateGameConf()
 	os.Mkdir(conf.LocalConfDir, os.ModePerm)
+}
+
+//检查进程是否存在
+func CheckProcess(dstName string) bool {
+	check := conf.ProductDir + "/agent/" + "checkZoneProcess"
+	ret, _ := utils.ExeShell("sh", check, dstName)
+	s := strings.Replace(string(ret), " ", "", -1)
+	if s != "" {
+		return false
+	}
+	return true
 }
 
 func LoadLogFile(agent *Agent) {
@@ -134,34 +178,11 @@ func New() *Agent {
 	}
 
 	LoadLogFile(&a)
+	go a.RegularlyCheckProcess()
 
-	a.msgMap[protocol.CmdToken] = a.S2cCheckRsp
-	a.msgMap[protocol.CmdStartZone] = a.S2cStartZone
-	a.msgMap[protocol.CmdStopZone] = a.S2cStopZone
-	a.msgMap[protocol.CmdUpdateHost] = a.S2cUpdateZoneConfig
-	a.msgMap[protocol.CmdStartHostZone] = a.S2cStartHostZones
-	a.msgMap[protocol.CmdStopHostZone] = a.S2cStopHostZones
-	a.msgMap[protocol.CmdNewZone] = a.S2cNewZone
-	a.msgMap[protocol.CmdUpdateSvn] = a.S2cUpdateSvn
-
-	a.RegularlyCheckProcess()
-
+	a.CmdReg()
 	return &a
 
-}
-
-//目前只有zone级服务初始化,后面添加登陆、充值等
-func (agent *Agent) InitSrv(name string) {
-	if _, ok := agent.srvs[name]; ok {
-		return
-	}
-
-	run := CheckProcess(name)
-	agent.srvs[name] = &ServiceInfo{
-		Started:        run,
-		RegularlyCheck: run,
-		Sname:          name,
-	}
 }
 
 func (agent *Agent) Connect() {
@@ -220,250 +241,39 @@ func (agent *Agent) Connect() {
 	}
 }
 
-//同步本机信息(机器名、机器上服务以及起停状态、svn代码版本号)
-func (agent *Agent) C2sCheckReq() {
-	p := protocol.C2sToken{
-		Mservice: make(map[string]bool),
+//目前只有zone级服务初始化,后面添加登陆、充值等
+func (agent *Agent) InitSrv(name string) {
+	if _, ok := agent.srvs[name]; ok {
+		return
 	}
 
-	p.Host = hostName
-	p.Token = utils.CreateMd5("cgyx2017")
-	p.CodeVersion = SvnVer
-
-	for k, v := range agent.srvs {
-		p.Mservice[k] = v.Started
+	run := CheckProcess(name)
+	agent.srvs[name] = &ServiceInfo{
+		Started:        run,
+		RegularlyCheck: run,
+		Sname:          name,
 	}
-
-	protocol.SendJson(agent.conn, protocol.CmdToken, &p)
 }
 
-func (agent *Agent) S2cCheckRsp(data []byte) {
-	r := string(data)
-	if r != "OK" {
-		log.Fatal("register agentserver callback not ok")
+//定时执行php命令处理磁盘上的游戏日志文件
+func (agent *Agent) GameLogFileToDB() {
+	for {
+		for k := range agent.logPhpArg {
+			utils.ExeShell("php", conf.CgPhp, agent.logPhpArg[k])
+		}
+		time.Sleep(time.Minute * 5)
 	}
-	//p := protocol.S2cToken{}
-	//err := json.Unmarshal(data, &p)
-	//if err != nil {
-	//	log.Println("CheckRsp, uncode error:", string(data), err.Error())
-	//	return
-	//}
 }
 
-func (agent *Agent) StartZone(zone string) int {
-	log.Println("recv start zone, zone:", zone)
-
-	run := CheckProcess(zone)
-	if run == false {
-		utils.ExeShellArgs3("sh", conf.ProductDir+"/cgServer", "start", zone, "")
-		for index := 0; index < 6; index++ {
-			if run {
-				break
+//定时检查已启动的进程是否现在存在
+func (agent *Agent) RegularlyCheckProcess() {
+	for {
+		for k, v := range agent.srvs {
+			if v.RegularlyCheck && CheckProcess(k) == false {
+				log.Println("check process error ", k)
 			}
-			run = CheckProcess(zone)
-			time.Sleep(time.Second * 5)
-		}
-	}
-	ret := protocol.NotifyDoFail
-	agent.srvs[zone].Started = run
-	if run == true {
-		agent.srvs[zone].RegularlyCheck = true
-		ret = protocol.NotifyDoSuc
-	}
-	agent.S2cZoneState(zone)
-	return ret
-}
-
-func (agent *Agent) StopZone(zone string) int {
-	log.Println("recv start zone, zone:", zone)
-	run := CheckProcess(zone)
-	if run == false {
-		agent.srvs[zone].Started = false
-		agent.srvs[zone].RegularlyCheck = false
-
-		return protocol.NotifyDoSuc
-	}
-	utils.ExeShellArgs2("sh", conf.ProductDir+"/cgServer", "stop", zone)
-	run = CheckProcess(zone)
-	if run {
-		return protocol.NotifyDoFail
-	}
-
-	agent.srvs[zone].Started = false
-	agent.srvs[zone].RegularlyCheck = false
-	agent.S2cZoneState(zone)
-	return protocol.NotifyDoSuc
-}
-
-func (agent *Agent) S2cUpdateZoneConfig(data []byte) {
-	p := protocol.S2cNotifyDo{}
-	err := json.Unmarshal(data, &p)
-	if err != nil {
-		log.Println(" Stop Zone uncode json err, zone:", err.Error())
-		return
-	}
-	r := protocol.C2sNotifyDone{
-		Req: p.Req,
-		Do:  protocol.NotifyDoFail,
-	}
-
-	log.Println("update zoneConfig, Name:", p.Name, "req:", p.Req)
-	UpdateGameConf()
-
-	r.Do = protocol.NotifyDoSuc
-	protocol.SendJson(agent.conn, protocol.CmdUpdateHost, r)
-}
-
-func (agent *Agent) S2cStartZone(data []byte) {
-	p := protocol.S2cNotifyDo{}
-	err := json.Unmarshal(data, &p)
-	if err != nil {
-		log.Println(" StartZone uncode json err, zone:", err.Error())
-		return
-	}
-	zone := p.Name
-	r := protocol.C2sNotifyDone{
-		Req: p.Req,
-		Do:  protocol.NotifyDoFail,
-	}
-
-	if agent.srvs[zone].Operating {
-		r.Do = protocol.NotifyDoing
-		protocol.SendJson(agent.conn, protocol.CmdStartZone, r)
-		return
-	}
-	agent.srvs[zone].Operating = true
-	r.Do = agent.StartZone(zone)
-	agent.srvs[zone].Operating = false
-	protocol.SendJson(agent.conn, protocol.CmdStartZone, r)
-}
-
-func (agent *Agent) S2cStopZone(data []byte) {
-	p := protocol.S2cNotifyDo{}
-	err := json.Unmarshal(data, &p)
-	if err != nil {
-		log.Println(" Stop Zone uncode json err, zone:", err.Error())
-		return
-	}
-	zone := p.Name
-	r := protocol.C2sNotifyDone{
-		Req: p.Req,
-		Do:  protocol.NotifyDoFail,
-	}
-	log.Println("recv stop msg, Name:", zone, "req:", p.Req)
-	if agent.srvs[zone].Operating {
-		r.Do = protocol.NotifyDoing
-		protocol.SendJson(agent.conn, protocol.CmdStopZone, r)
-		return
-	}
-	agent.srvs[zone].Operating = true
-	r.Do = agent.StopZone(zone)
-	agent.srvs[zone].Operating = false
-	protocol.SendJson(agent.conn, protocol.CmdStopZone, r)
-}
-
-func (agent *Agent) S2cStartHostZones(data []byte) {
-	p := protocol.S2cNotifyDo{}
-	err := json.Unmarshal(data, &p)
-	if err != nil {
-		log.Println(" Start hostZones uncode json err, zone:", err.Error())
-		return
-	}
-	r := protocol.C2sNotifyDone{
-		Req: p.Req,
-		Do:  protocol.NotifyDoSuc,
-	}
-
-	for k, _ := range agent.srvs {
-		ret := agent.StartZone(k)
-		if ret != protocol.NotifyDoSuc {
-			r.Do = ret
-		}
-	}
-	protocol.SendJson(agent.conn, protocol.CmdStartHostZone, r)
-}
-
-func (agent *Agent) S2cStopHostZones(data []byte) {
-	p := protocol.S2cNotifyDo{}
-	err := json.Unmarshal(data, &p)
-	if err != nil {
-		log.Println(" Stop hostZones uncode json err, zone:", err.Error())
-		return
-	}
-	r := protocol.C2sNotifyDone{
-		Req: p.Req,
-		Do:  protocol.NotifyDoSuc,
-	}
-	for k, _ := range agent.srvs {
-		ret := agent.StopZone(k)
-		if ret != protocol.NotifyDoSuc {
-			r.Do = ret
 		}
 
+		time.Sleep(time.Minute * 30)
 	}
-	protocol.SendJson(agent.conn, protocol.CmdStopHostZone, r)
-}
-
-func (agent *Agent) S2cZoneState(zone string) {
-	p := protocol.C2sZoneState{
-		Zone: zone,
-		Open: agent.srvs[zone].Started,
-	}
-	err := protocol.SendJson(agent.conn, protocol.CmdZoneState, p)
-	if err != nil {
-		log.Println("sysn zone state err, ", err.Error())
-	}
-}
-
-func (agent *Agent) S2cNewZone(data []byte) {
-	p := protocol.S2cNotifyDo{}
-	err := json.Unmarshal(data, &p)
-	if err != nil {
-		log.Println(" Stop Zone uncode json err, zone:", err.Error())
-		return
-	}
-	r := protocol.C2sNotifyDone{
-		Req: p.Req,
-		Do:  protocol.NotifyDoSuc,
-	}
-	log.Println("update zoneConfig, Name:", p.Name, "req:", p.Req)
-
-	UpdateGameConf()
-	agent.InitSrv(p.Name)
-
-	r.Do = protocol.NotifyDoSuc
-	protocol.SendJson(agent.conn, protocol.CmdNewZone, r)
-}
-
-func (agent *Agent) S2cUpdateSvn(data []byte) {
-	p := protocol.S2cNotifyDo{}
-	err := json.Unmarshal(data, &p)
-	if err != nil {
-		log.Println(" Stop Zone uncode json err, zone:", err.Error())
-		return
-	}
-	r := protocol.C2sNotifyDone{
-		Req: p.Req,
-		Do:  protocol.NotifyDoSuc,
-	}
-	log.Println("update zoneConfig, Name:", p.Name, "req:", p.Req)
-
-	cmdExe := conf.ProductDir + "/agent/svnUp"
-	result, exeErr := utils.ExeShell("sh", cmdExe, "")
-	if exeErr != nil {
-		log.Println("Update cannt work!, reason:", exeErr.Error())
-		r.Do = protocol.NotifyDoFail
-	} else {
-		cmdExe = conf.ProductDir + "/agent/svnInfo"
-		result, exeErr = utils.ExeShell("sh", cmdExe, "")
-		if exeErr != nil {
-			log.Println("Update cannt work!, reason:", exeErr.Error())
-			r.Do = protocol.NotifyDoFail
-		} else {
-			r.Do = protocol.NotifyDoSuc
-			r.Result = result
-			SvnVer = r.Result
-		}
-	}
-	protocol.SendJson(agent.conn, protocol.CmdNewZone, r)
 }
