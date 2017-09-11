@@ -183,6 +183,40 @@ func SendJson(conn *net.Conn, cmd uint32, v interface{}) error {
 	return nil
 }
 
+func SendJsonWaitCB(conn *net.Conn, cmd uint32, v S2cNotifyDo, reply interface{}) error {
+	if conn == nil {
+		return errors.New(fmt.Sprintf("sendjson send msg cmd:%d, conn pointer is nil", cmd, conn))
+	}
+	v.Req = gReqIndex
+	gReqIndex++
+
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	jsonBytes := Packet(cmd, data)
+	_, jerr := (*conn).Write(jsonBytes)
+	if jerr != nil {
+		return jerr
+	}
+
+	ch := make(chan interface{})
+	indexChanMap[v.Req] = ch
+
+	t := time.NewTimer(time.Second * 30)
+	select {
+	case r := <-ch:
+		DeepCopy(reply, r)
+		log.Println("wait callback get reply:", reply)
+	case <-t.C:
+		delete(indexChanMap, v.Req)
+		log.Println("wait cb overtime in 30 second, req:", v.Req)
+		return errors.New(fmt.Sprintf("wait cb overtime in 30 second, req:%d", v.Req))
+	}
+	return nil
+}
+
 func MatchType(a string, f string) bool {
 	reg := regexp.MustCompile(f)
 	s := reg.FindAllString(a, -1)
