@@ -84,6 +84,7 @@ func (agent *Agent) S2cStartZone(data []byte) {
 		Req: p.Req,
 		Do:  protocol.NotifyDoFail,
 	}
+	log.Println("xxxxxxx-", agent.srvs)
 
 	if agent.srvs[zone].Operating {
 		r.Do = protocol.NotifyDoing

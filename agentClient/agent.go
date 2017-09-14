@@ -90,7 +90,6 @@ func LoadConfig() {
 		log.Fatal(err)
 	}
 	conf.RemoteConfDir += hostName
-
 }
 
 //加载本地游戏配置
@@ -139,56 +138,61 @@ func New() *Agent {
 func (agent *Agent) Connect() {
 	for {
 		conn, err := net.Dial("tcp", conf.ConAddress)
-		if err != nil {
-			log.Println("agent conn fail, addr:", conf.ConAddress)
-			return
-		}
-		defer conn.Close()
+		if err == nil {
+			agent.conn = &conn
+			agent.OnMessage()
+			log.Println("connect to agent server sucess:", conf.ConAddress)
+		} else {
 
-		agent.conn = &conn
-
-		agent.C2sCheckReq()
-
-		// 消息缓冲
-		msgbuf := bytes.NewBuffer(make([]byte, 0, 1024))
-		// 数据缓冲
-		databuf := make([]byte, 1024)
-		// 消息长度
-		length := 0
-
-		for {
-			// 读取数据
-			n, err := conn.Read(databuf)
-			if err == io.EOF {
-				log.Printf("Client exit: %s\n", conn.RemoteAddr())
-			}
-			if err != nil {
-				log.Printf("Read error: %s\n", err)
-				return
-			}
-			// 数据添加到消息缓冲
-			n, err = msgbuf.Write(databuf[:n])
-			if err != nil {
-				log.Printf("Buffer write error: %s\n", err)
-				return
-			}
-			// 消息分割循环
-			for {
-				cmd, data := protocol.UnPacket(&length, msgbuf)
-				if cmd <= 0 {
-					break
-				}
-				mfunc := agent.msgMap[cmd]
-				if mfunc == nil {
-					log.Printf("cannt find msg handle server cmd: %d data: %s\n", cmd, string(data))
-				} else {
-					mfunc(data)
-					log.Printf("server cmd: %d data: %s\n", cmd, string(data))
-				}
-			}
+			log.Println("connect to agent server fail :", conf.ConAddress)
 		}
 
 		time.Sleep(5 * time.Second)
+	}
+
+}
+
+func (agent *Agent) OnMessage() {
+	// 消息缓冲
+	msgbuf := bytes.NewBuffer(make([]byte, 0, 1024))
+	// 数据缓冲
+	databuf := make([]byte, 1024)
+	// 消息长度
+	length := 0
+
+	agent.C2sCheckReq()
+	conn := agent.conn
+
+	for {
+		// 读取数据
+		n, err := (*conn).Read(databuf)
+		if err == io.EOF {
+			log.Printf("Client exit: %s\n", (*conn).RemoteAddr())
+		}
+		if err != nil {
+			log.Printf("Read error: %s\n", err)
+			return
+		}
+		// 数据添加到消息缓冲
+		n, err = msgbuf.Write(databuf[:n])
+		if err != nil {
+			log.Printf("Buffer write error: %s\n", err)
+			return
+		}
+		// 消息分割循环
+		for {
+			cmd, data := protocol.UnPacket(&length, msgbuf)
+			if cmd <= 0 {
+				break
+			}
+			mfunc := agent.msgMap[cmd]
+			if mfunc == nil {
+				log.Printf("cannt find msg handle server cmd: %d data: %s\n", cmd, string(data))
+			} else {
+				mfunc(data)
+				log.Printf("server cmd: %d data: %s\n", cmd, string(data))
+			}
+		}
 	}
 }
 
