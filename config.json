@@ -3,9 +3,8 @@
 	"RemoteIP"	: "192.168.1.252",
 	"RemoteConfDir"	: "/home/cgyx/gConf/",
 	"LocalConfDir"	: "/home/cgyx/GameConfig/",
-	"ProductDir"	: "/home/cgyx/product/server/",
-	"CgPhp"		: "/home/cgyx/product/server/php/api/api.php",
-	"PhpTemplate"   : "logdb=%s&logdir=%s&method=%s&sdb=%s",
+	"GameShell"	: "/home/cgyx/product/server/cgServer",
+	"CheckZoneshell": "/home/cgyx/product/server/agent/checkZoneProcess",
 	"CmdSvnVer" 	: "/home/cgyx/product/server/agent/svnInfo",
 	"CmdSvnUp" 	: "/home/cgyx/product/server/agent/svnUp"
 }

@@ -1,8 +1,7 @@
 package main
 
-import "github.com/adamluo159/gameAgent/agentClient"
+import "github.com/adamluo159/gameAgent/agent"
 
 func main() {
-	a := agentClient.New()
-	a.Connect()
+	agent.New("config.json")
 }
